@@ -5,7 +5,6 @@ import openai
 import config
 import json
 import os
-from datetime import datetime, timedelta
 
 # === ПОДКЛЮЧЕНИЕ К ВК ===
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
@@ -19,10 +18,9 @@ client = openai.OpenAI(
 
 # === ПАМЯТЬ ДИАЛОГА ===
 MEMORY_FILE = "dialogs.json"
-MAX_MEMORY = 20  # сколько последних сообщений помнить
+MAX_MEMORY = 20
 
 def load_memory(user_id):
-    """Загружает историю диалога пользователя"""
     if not os.path.exists(MEMORY_FILE):
         return []
     try:
@@ -33,7 +31,6 @@ def load_memory(user_id):
         return []
 
 def save_memory(user_id, messages):
-    """Сохраняет историю диалога пользователя"""
     data = {}
     if os.path.exists(MEMORY_FILE):
         try:
@@ -41,13 +38,11 @@ def save_memory(user_id, messages):
                 data = json.load(f)
         except:
             data = {}
-    
-    data[str(user_id)] = messages[-MAX_MEMORY:]  # обрезаем до лимита
+    data[str(user_id)] = messages[-MAX_MEMORY:]
     with open(MEMORY_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def clear_memory(user_id):
-    """Очищает историю диалога пользователя"""
     data = {}
     if os.path.exists(MEMORY_FILE):
         try:
@@ -72,7 +67,6 @@ def send_message(user_id, text):
         print(f"❌ Ошибка отправки: {e}")
 
 def send_typing(user_id):
-    """Показывает, что бот печатает"""
     try:
         vk.messages.setActivity(user_id=user_id, type="typing")
     except:
@@ -80,39 +74,47 @@ def send_typing(user_id):
 
 # === КОМАНДЫ ===
 def handle_commands(user_id, text):
+    # === /start — ПРИВЕТСТВИЕ ===
     if text == "/start":
-        send_message(user_id, 
-            "🌿 Привет! Я Ботаник — твой AI-помощник.\n\n"
+        send_message(user_id,
+            "🌿 Привет! Я Ботаник — твой умный AI-помощник.\n\n"
             "📌 Я умею:\n"
-            "• Отвечать на вопросы\n"
-            "• Запоминать диалог\n"
+            "• Отвечать на любые вопросы\n"
+            "• Запоминать ход беседы\n"
             "• Помогать с задачами\n\n"
-            "❓ Напиши /help для списка команд.")
+            "❓ Напиши /help, чтобы увидеть все команды.")
         return True
 
+    # === /help — СПИСОК КОМАНД ===
     elif text == "/help":
         send_message(user_id,
-            "📋 Список команд:\n\n"
-            "/start — приветствие\n"
-            "/help — помощь\n"
-            "/clear — очистить историю\n"
-            "/info — информация о боте\n\n"
-            "💡 Просто напиши мне что-нибудь!")
+            "📋 *Список команд:*\n\n"
+            "/start — приветствие и знакомство\n"
+            "/help — этот список команд\n"
+            "/clear — очистить историю диалога\n"
+            "/rules — правила использования\n\n"
+            "💡 Просто напиши мне любое сообщение, и я отвечу!")
         return True
 
+    # === /clear — ОЧИСТКА ПАМЯТИ ===
     elif text == "/clear":
         clear_memory(user_id)
-        send_message(user_id, "🧹 История диалога очищена!")
+        send_message(user_id, "🧹 История диалога очищена. Начинаем с чистого листа!")
         return True
 
-    elif text == "/info":
+    # === /rules — ПРАВИЛА ===
+    elif text == "/rules":
         send_message(user_id,
-            f"🤖 Ботаник\n"
-            f"📌 Модель: {config.OPENAI_MODEL}\n"
-            f"📌 Память: до {MAX_MEMORY} сообщений\n"
-            f"📌 Группа ID: {config.GROUP_ID}")
+            "📜 *Правила использования:*\n\n"
+            "1. Бот создан для помощи и общения\n"
+            "2. Не используйте бота для спама\n"
+            "3. Бот не хранит личные данные\n"
+            "4. Запрещены оскорбления и угрозы\n"
+            "5. Бот работает 24/7\n\n"
+            "Нарушение правил может привести к блокировке.")
         return True
 
+    # === ЕСЛИ КОМАНДА НЕ РАСПОЗНАНА ===
     return False
 
 # === ГЛАВНЫЙ ОБРАБОТЧИК ===
@@ -140,7 +142,7 @@ def handle_message(event):
     # === ЗАГРУЗКА ПАМЯТИ ===
     history = load_memory(user_id)
     messages = [
-        {"role": "system", "content": "Ты — Ботаник. Умный, но без занудства. Отвечай кратко и по делу. Используй эмодзи, но не перебарщивай. Если не знаешь ответа — так и скажи."}
+        {"role": "system", "content": "Ты — Ботаник. Умный, но без занудства. Отвечай кратко и по делу. Используй эмодзи, но не перебарщивай. Если не знаешь — так и скажи."}
     ]
     messages.extend(history)
     messages.append({"role": "user", "content": text})
@@ -159,7 +161,6 @@ def handle_message(event):
         answer = response.choices[0].message.content
         print(f"🤖 Ответ для {user_id}: {answer}")
 
-        # === СОХРАНЕНИЕ ПАМЯТИ ===
         history.append({"role": "user", "content": text})
         history.append({"role": "assistant", "content": answer})
         save_memory(user_id, history)
