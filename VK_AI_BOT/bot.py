@@ -86,7 +86,6 @@ def send_typing(user_id):
 
 # === КОМАНДЫ ===
 def handle_commands(user_id, text):
-    # /start
     if text == "/start":
         send_message(user_id,
             "🌿 Привет! Я Ботаник — твой умный AI-помощник.\n\n"
@@ -98,7 +97,6 @@ def handle_commands(user_id, text):
             keyboard=get_main_keyboard())
         return True
 
-    # /help
     elif text == "/help" or text == "📋 Команды":
         send_message(user_id,
             "📋 *Список команд:*\n\n"
@@ -110,7 +108,6 @@ def handle_commands(user_id, text):
             keyboard=get_main_keyboard())
         return True
 
-    # /clear
     elif text == "/clear" or text == "🧹 Очистить историю":
         clear_memory(user_id)
         send_message(user_id,
@@ -118,7 +115,6 @@ def handle_commands(user_id, text):
             keyboard=get_main_keyboard())
         return True
 
-    # /rules
     elif text == "/rules" or text == "📜 Правила":
         send_message(user_id,
             "📜 *Правила использования:*\n\n"
@@ -131,7 +127,6 @@ def handle_commands(user_id, text):
             keyboard=get_main_keyboard())
         return True
 
-    # /info
     elif text == "/info" or text == "ℹ️ Инфо":
         send_message(user_id,
             f"🤖 *Ботаник*\n"
@@ -144,7 +139,6 @@ def handle_commands(user_id, text):
 
     return False
 
-# === ПОДСКАЗКИ О КОМАНДАХ ===
 def handle_help_triggers(user_id, text):
     triggers = ["что ты умеешь", "какие команды", "помощь", "список команд", "команды"]
     if any(phrase in text.lower() for phrase in triggers):
@@ -160,7 +154,6 @@ def handle_help_triggers(user_id, text):
         return True
     return False
 
-# === ГЛАВНЫЙ ОБРАБОТЧИК ===
 def handle_message(event):
     if event.from_user:
         user_id = event.object.message['from_id']
@@ -177,16 +170,13 @@ def handle_message(event):
     if not text:
         return
 
-    # === ОБРАБОТКА КОМАНД И КНОПОК ===
     if text.startswith('/') or text in ["📋 Команды", "ℹ️ Инфо", "🧹 Очистить историю", "📜 Правила"]:
         if handle_commands(user_id, text):
             return
 
-    # === ПОДСКАЗКА, ЕСЛИ ПОЛЬЗОВАТЕЛЬ СПРАШИВАЕТ ===
     if handle_help_triggers(user_id, text):
         return
 
-    # === ЗАГРУЗКА ПАМЯТИ ===
     history = load_memory(user_id)
     messages = [
         {"role": "system", "content": "Ты — Ботаник. Умный, но без занудства. Отвечай кратко и по делу. Используй эмодзи, но не перебарщивай. Если не знаешь — так и скажи."}
@@ -194,7 +184,6 @@ def handle_message(event):
     messages.extend(history)
     messages.append({"role": "user", "content": text})
 
-    # === ОТПРАВКА В AI ===
     try:
         send_typing(user_id)
 
@@ -218,7 +207,6 @@ def handle_message(event):
         print(f"❌ Ошибка AI: {e}")
         send_message(user_id, "⚠️ Произошла ошибка. Попробуй позже.", keyboard=get_main_keyboard())
 
-# === ЗАПУСК ===
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
     print(f"📌 Модель: {config.OPENAI_MODEL}")
