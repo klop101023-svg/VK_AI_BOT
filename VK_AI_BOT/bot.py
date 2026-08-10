@@ -4,6 +4,8 @@ from vk_api.utils import get_random_id
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 import openai
 import config
+import json
+import os
 
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
@@ -12,6 +14,45 @@ client = openai.OpenAI(
     api_key=config.OPENAI_API_KEY,
     base_url=config.OPENAI_BASE_URL,
 )
+
+# === ПАМЯТЬ ДИАЛОГА ===
+MEMORY_FILE = "dialogs.json"
+MAX_MEMORY = 20
+
+def load_memory(user_id):
+    if not os.path.exists(MEMORY_FILE):
+        return []
+    try:
+        with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get(str(user_id), [])
+    except:
+        return []
+
+def save_memory(user_id, messages):
+    data = {}
+    if os.path.exists(MEMORY_FILE):
+        try:
+            with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except:
+            data = {}
+    data[str(user_id)] = messages[-MAX_MEMORY:]
+    with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def clear_memory(user_id):
+    data = {}
+    if os.path.exists(MEMORY_FILE):
+        try:
+            with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except:
+            data = {}
+    if str(user_id) in data:
+        del data[str(user_id)]
+    with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 # === КЛАВИАТУРА ===
 def get_main_keyboard():
@@ -25,6 +66,7 @@ def get_main_keyboard():
     keyboard.add_button("📜 Правила", color=VkKeyboardColor.PRIMARY)
     return keyboard.get_keyboard()
 
+# === ОТПРАВКА ===
 def send_message(user_id, text, keyboard=None):
     try:
         vk.messages.send(
@@ -36,6 +78,7 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
+# === ОБРАБОТЧИК ===
 def handle_message(event):
     user_id = event.object.message['from_id']
     text = event.object.message.get('text', '')
@@ -44,16 +87,14 @@ def handle_message(event):
     if not text:
         return
 
-    # === КНОПКА "НАЧАТЬ" (из меню с четырьмя точками) ===
+    # === КНОПКА "НАЧАТЬ" ===
     if text == "start" or text == "начать":
         send_message(user_id,
             "🌿 Привет! Я Ботаник — твой умный AI-помощник.\n\n"
             "📌 Используй кнопки ниже для навигации.")
         return
 
-    # === ТВОИ КОМАНДЫ ===
-
-    # 🌿 Главная
+    # === КОМАНДЫ ===
     if text == "/start" or text == "🌿 Главная":
         send_message(user_id,
             "🌿 Привет! Я Ботаник — твой умный AI-помощник.\n\n"
@@ -64,61 +105,72 @@ def handle_message(event):
             "❓ Напиши /help, чтобы увидеть все команды.")
         return
 
-    # 📋 Команды
     elif text == "/help" or text == "📋 Команды":
         send_message(user_id,
             "📋 *Список команд:*\n\n"
-            "/start — приветствие и знакомство\n"
-            "/help — этот список команд\n"
-            "/clear — очистить историю диалога\n"
-            "/rules — правила использования\n"
-            "/info — информация о боте\n\n"
+            "/start — приветствие\n"
+            "/help — этот список\n"
+            "/clear — очистить историю\n"
+            "/rules — правила\n"
+            "/info — информация\n\n"
             "💡 Просто напиши мне любое сообщение, и я отвечу!")
         return
 
-    # 🧹 Очистить
     elif text == "/clear" or text == "🧹 Очистить":
-        send_message(user_id,
-            "🧹 История диалога очищена. Начинаем с чистого листа!")
+        clear_memory(user_id)
+        send_message(user_id, "🧹 История диалога очищена.")
         return
 
-    # 📜 Правила
     elif text == "/rules" or text == "📜 Правила":
         send_message(user_id,
-            "📜 *Правила использования:*\n\n"
-            "1. Бот создан для помощи и общения\n"
-            "2. Не используйте бота для спама\n"
-            "3. Бот не хранит личные данные\n"
-            "4. Запрещены оскорбления и угрозы\n"
-            "5. Бот работает 24/7\n\n"
-            "Нарушение правил может привести к блокировке.")
+            "📜 *Правила:*\n\n"
+            "1. Бот создан для помощи\n"
+            "2. Не спамьте\n"
+            "3. Бот не хранит переписку\n"
+            "4. Запрещены оскорбления\n"
+            "5. Бот работает 24/7")
         return
 
-    # ℹ️ Инфо
     elif text == "/info" or text == "ℹ️ Инфо":
         send_message(user_id,
             f"🤖 *Ботаник*\n"
             f"📌 Модель: {config.OPENAI_MODEL}\n"
             f"📌 Группа ID: {config.GROUP_ID}\n"
+            f"📌 Память: {MAX_MEMORY} сообщений\n"
             f"📌 Статус: онлайн 24/7")
         return
 
-    # === AI-ОТВЕТ ===
+    # === AI С ПАМЯТЬЮ ===
     try:
+        history = load_memory(user_id)
+        messages = [
+            {"role": "system", "content": "Ты — Ботаник. Отвечай кратко и по делу. Помни предыдущие сообщения."}
+        ]
+        messages.extend(history)
+        messages.append({"role": "user", "content": text})
+
         response = client.chat.completions.create(
             model=config.OPENAI_MODEL,
-            messages=[{"role": "user", "content": text}],
+            messages=messages,
             temperature=0.7,
             max_tokens=500,
         )
         answer = response.choices[0].message.content
+
+        history.append({"role": "user", "content": text})
+        history.append({"role": "assistant", "content": answer})
+        save_memory(user_id, history)
+
         send_message(user_id, answer)
+
     except Exception as e:
         print(f"❌ Ошибка AI: {e}")
         send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
 
+# === ЗАПУСК ===
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
+    print(f"📌 Память: до {MAX_MEMORY} сообщений")
     print("⏳ Ожидаю сообщения...")
 
     try:
