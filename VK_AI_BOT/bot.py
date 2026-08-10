@@ -13,7 +13,7 @@ client = openai.OpenAI(
     base_url=config.OPENAI_BASE_URL,
 )
 
-# === КЛАВИАТУРА (кнопки-команды) ===
+# === КЛАВИАТУРА ===
 def get_main_keyboard():
     keyboard = VkKeyboard(one_time=False)
     keyboard.add_button("🌿 Главная", color=VkKeyboardColor.PRIMARY)
@@ -25,7 +25,6 @@ def get_main_keyboard():
     keyboard.add_button("📜 Правила", color=VkKeyboardColor.PRIMARY)
     return keyboard.get_keyboard()
 
-# === ОТПРАВКА ===
 def send_message(user_id, text, keyboard=None):
     try:
         vk.messages.send(
@@ -37,7 +36,6 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-# === ОБРАБОТЧИК ===
 def handle_message(event):
     user_id = event.object.message['from_id']
     text = event.object.message.get('text', '')
@@ -46,42 +44,48 @@ def handle_message(event):
     if not text:
         return
 
-    # === ОБРАБОТКА КНОПОК И КОМАНД ===
+    # === КНОПКА "НАЧАТЬ" (из меню с четырьмя точками) ===
+    if text == "start" or text == "начать":
+        send_message(user_id,
+            "🌿 Привет! Я Ботаник — твой умный AI-помощник.\n\n"
+            "📌 Используй кнопки ниже для навигации.")
+        return
+
+    # === ТВОИ КОМАНДЫ ===
 
     # 🌿 Главная
     if text == "/start" or text == "🌿 Главная":
         send_message(user_id,
-            "🌿 *Привет! Я Ботаник — твой умный AI-помощник.*\n\n"
+            "🌿 Привет! Я Ботаник — твой умный AI-помощник.\n\n"
             "📌 Я умею:\n"
             "• Отвечать на любые вопросы\n"
             "• Запоминать ход беседы\n"
             "• Помогать с задачами\n\n"
-            "⬇️ Используй кнопки ниже для навигации.")
+            "❓ Напиши /help, чтобы увидеть все команды.")
         return
 
     # 📋 Команды
     elif text == "/help" or text == "📋 Команды":
         send_message(user_id,
-            "📋 *Список доступных команд:*\n\n"
-            "🌿 Главная — приветствие и знакомство\n"
-            "📋 Команды — этот список\n"
-            "🧹 Очистить — очистить историю диалога\n"
-            "📜 Правила — правила использования\n"
-            "ℹ️ Инфо — информация о боте\n\n"
+            "📋 *Список команд:*\n\n"
+            "/start — приветствие и знакомство\n"
+            "/help — этот список команд\n"
+            "/clear — очистить историю диалога\n"
+            "/rules — правила использования\n"
+            "/info — информация о боте\n\n"
             "💡 Просто напиши мне любое сообщение, и я отвечу!")
         return
 
     # 🧹 Очистить
     elif text == "/clear" or text == "🧹 Очистить":
         send_message(user_id,
-            "🧹 *История диалога очищена.*\n\n"
-            "Начинаем с чистого листа! ✨")
+            "🧹 История диалога очищена. Начинаем с чистого листа!")
         return
 
     # 📜 Правила
     elif text == "/rules" or text == "📜 Правила":
         send_message(user_id,
-            "📜 *Правила использования бота:*\n\n"
+            "📜 *Правила использования:*\n\n"
             "1. Бот создан для помощи и общения\n"
             "2. Не используйте бота для спама\n"
             "3. Бот не хранит личные данные\n"
@@ -93,14 +97,13 @@ def handle_message(event):
     # ℹ️ Инфо
     elif text == "/info" or text == "ℹ️ Инфо":
         send_message(user_id,
-            f"🤖 *Ботаник*\n\n"
+            f"🤖 *Ботаник*\n"
             f"📌 Модель: {config.OPENAI_MODEL}\n"
-            f"📌 Память: до 20 сообщений\n"
             f"📌 Группа ID: {config.GROUP_ID}\n"
             f"📌 Статус: онлайн 24/7")
         return
 
-    # === AI-ОТВЕТ (если не команда) ===
+    # === AI-ОТВЕТ ===
     try:
         response = client.chat.completions.create(
             model=config.OPENAI_MODEL,
@@ -110,12 +113,10 @@ def handle_message(event):
         )
         answer = response.choices[0].message.content
         send_message(user_id, answer)
-
     except Exception as e:
         print(f"❌ Ошибка AI: {e}")
         send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
 
-# === ЗАПУСК ===
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
     print("⏳ Ожидаю сообщения...")
