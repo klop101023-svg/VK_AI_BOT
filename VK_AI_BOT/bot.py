@@ -1,6 +1,7 @@
 import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
+from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 import openai
 import config
 import json
@@ -55,12 +56,23 @@ def clear_memory(user_id):
     with open(MEMORY_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+# === КЛАВИАТУРА ===
+def get_main_keyboard():
+    keyboard = VkKeyboard(one_time=False)
+    keyboard.add_button("📋 Команды", color=VkKeyboardColor.PRIMARY)
+    keyboard.add_button("ℹ️ Инфо", color=VkKeyboardColor.PRIMARY)
+    keyboard.add_line()
+    keyboard.add_button("🧹 Очистить историю", color=VkKeyboardColor.NEGATIVE)
+    keyboard.add_button("📜 Правила", color=VkKeyboardColor.PRIMARY)
+    return keyboard.get_keyboard()
+
 # === ОТПРАВКА СООБЩЕНИЙ ===
-def send_message(user_id, text):
+def send_message(user_id, text, keyboard=None):
     try:
         vk.messages.send(
             user_id=user_id,
             message=text,
+            keyboard=keyboard,
             random_id=get_random_id()
         )
     except Exception as e:
@@ -74,7 +86,7 @@ def send_typing(user_id):
 
 # === КОМАНДЫ ===
 def handle_commands(user_id, text):
-    # === /start — ПРИВЕТСТВИЕ ===
+    # /start
     if text == "/start":
         send_message(user_id,
             "🌿 Привет! Я Ботаник — твой умный AI-помощник.\n\n"
@@ -82,28 +94,32 @@ def handle_commands(user_id, text):
             "• Отвечать на любые вопросы\n"
             "• Запоминать ход беседы\n"
             "• Помогать с задачами\n\n"
-            "❓ Напиши /help, чтобы увидеть все команды.")
+            "Используй кнопки ниже для навигации:",
+            keyboard=get_main_keyboard())
         return True
 
-    # === /help — СПИСОК КОМАНД ===
-    elif text == "/help":
+    # /help
+    elif text == "/help" or text == "📋 Команды":
         send_message(user_id,
             "📋 *Список команд:*\n\n"
-            "/start — приветствие и знакомство\n"
-            "/help — этот список команд\n"
-            "/clear — очистить историю диалога\n"
-            "/rules — правила использования\n\n"
-            "💡 Просто напиши мне любое сообщение, и я отвечу!")
+            "/start — приветствие\n"
+            "/help — этот список\n"
+            "/clear — очистить историю\n"
+            "/rules — правила\n\n"
+            "💡 Или просто напиши мне что угодно!",
+            keyboard=get_main_keyboard())
         return True
 
-    # === /clear — ОЧИСТКА ПАМЯТИ ===
-    elif text == "/clear":
+    # /clear
+    elif text == "/clear" or text == "🧹 Очистить историю":
         clear_memory(user_id)
-        send_message(user_id, "🧹 История диалога очищена. Начинаем с чистого листа!")
+        send_message(user_id,
+            "🧹 История диалога очищена. Начинаем с чистого листа!",
+            keyboard=get_main_keyboard())
         return True
 
-    # === /rules — ПРАВИЛА ===
-    elif text == "/rules":
+    # /rules
+    elif text == "/rules" or text == "📜 Правила":
         send_message(user_id,
             "📜 *Правила использования:*\n\n"
             "1. Бот создан для помощи и общения\n"
@@ -111,10 +127,37 @@ def handle_commands(user_id, text):
             "3. Бот не хранит личные данные\n"
             "4. Запрещены оскорбления и угрозы\n"
             "5. Бот работает 24/7\n\n"
-            "Нарушение правил может привести к блокировке.")
+            "Нарушение правил может привести к блокировке.",
+            keyboard=get_main_keyboard())
         return True
 
-    # === ЕСЛИ КОМАНДА НЕ РАСПОЗНАНА ===
+    # /info
+    elif text == "/info" or text == "ℹ️ Инфо":
+        send_message(user_id,
+            f"🤖 *Ботаник*\n"
+            f"📌 Модель: {config.OPENAI_MODEL}\n"
+            f"📌 Память: до {MAX_MEMORY} сообщений\n"
+            f"📌 Группа ID: {config.GROUP_ID}\n"
+            f"📌 Статус: онлайн 24/7",
+            keyboard=get_main_keyboard())
+        return True
+
+    return False
+
+# === ПОДСКАЗКИ О КОМАНДАХ ===
+def handle_help_triggers(user_id, text):
+    triggers = ["что ты умеешь", "какие команды", "помощь", "список команд", "команды"]
+    if any(phrase in text.lower() for phrase in triggers):
+        send_message(user_id,
+            "📋 *Вот что я умею:*\n\n"
+            "/start — приветствие\n"
+            "/help — список команд\n"
+            "/clear — очистить историю\n"
+            "/rules — правила\n"
+            "/info — информация\n\n"
+            "💡 Или просто спроси меня о чём угодно!",
+            keyboard=get_main_keyboard())
+        return True
     return False
 
 # === ГЛАВНЫЙ ОБРАБОТЧИК ===
@@ -134,10 +177,14 @@ def handle_message(event):
     if not text:
         return
 
-    # === ОБРАБОТКА КОМАНД ===
-    if text.startswith('/'):
+    # === ОБРАБОТКА КОМАНД И КНОПОК ===
+    if text.startswith('/') or text in ["📋 Команды", "ℹ️ Инфо", "🧹 Очистить историю", "📜 Правила"]:
         if handle_commands(user_id, text):
             return
+
+    # === ПОДСКАЗКА, ЕСЛИ ПОЛЬЗОВАТЕЛЬ СПРАШИВАЕТ ===
+    if handle_help_triggers(user_id, text):
+        return
 
     # === ЗАГРУЗКА ПАМЯТИ ===
     history = load_memory(user_id)
@@ -165,11 +212,11 @@ def handle_message(event):
         history.append({"role": "assistant", "content": answer})
         save_memory(user_id, history)
 
-        send_message(user_id, answer)
+        send_message(user_id, answer, keyboard=get_main_keyboard())
 
     except Exception as e:
         print(f"❌ Ошибка AI: {e}")
-        send_message(user_id, "⚠️ Извините, произошла ошибка. Попробуйте позже.")
+        send_message(user_id, "⚠️ Произошла ошибка. Попробуй позже.", keyboard=get_main_keyboard())
 
 # === ЗАПУСК ===
 def main():
