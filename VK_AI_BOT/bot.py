@@ -15,8 +15,12 @@ client = openai.OpenAI(
     base_url=config.OPENAI_BASE_URL,
 )
 
-# === ПАМЯТЬ ДИАЛОГА ===
-MEMORY_FILE = "dialogs.json"
+# === ПАМЯТЬ ДИАЛОГА (СОХРАНЕНИЕ В /DATA) ===
+DATA_DIR = "/data"
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+
+MEMORY_FILE = os.path.join(DATA_DIR, "dialogs.json")
 MAX_MEMORY = 20
 
 def load_memory(user_id):
@@ -66,7 +70,6 @@ def get_main_keyboard():
     keyboard.add_button("📜 Правила", color=VkKeyboardColor.PRIMARY)
     return keyboard.get_keyboard()
 
-# === ОТПРАВКА ===
 def send_message(user_id, text, keyboard=None):
     try:
         vk.messages.send(
@@ -78,7 +81,6 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-# === ОБРАБОТЧИК ===
 def handle_message(event):
     user_id = event.object.message['from_id']
     text = event.object.message.get('text', '')
@@ -87,14 +89,12 @@ def handle_message(event):
     if not text:
         return
 
-    # === КНОПКА "НАЧАТЬ" ===
     if text == "start" or text == "начать":
         send_message(user_id,
             "🌿 Привет! Я Ботаник — твой умный AI-помощник.\n\n"
             "📌 Используй кнопки ниже для навигации.")
         return
 
-    # === КОМАНДЫ ===
     if text == "/start" or text == "🌿 Главная":
         send_message(user_id,
             "🌿 Привет! Я Ботаник — твой умный AI-помощник.\n\n"
@@ -140,7 +140,6 @@ def handle_message(event):
             f"📌 Статус: онлайн 24/7")
         return
 
-    # === AI С ПАМЯТЬЮ ===
     try:
         history = load_memory(user_id)
         messages = [
@@ -167,10 +166,10 @@ def handle_message(event):
         print(f"❌ Ошибка AI: {e}")
         send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
 
-# === ЗАПУСК ===
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
     print(f"📌 Память: до {MAX_MEMORY} сообщений")
+    print(f"📌 Файлы сохраняются в: {DATA_DIR}")
     print("⏳ Ожидаю сообщения...")
 
     try:
