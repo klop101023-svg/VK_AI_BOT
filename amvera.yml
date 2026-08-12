@@ -11,3 +11,4 @@ environments:
     app:
       command: python VK_AI_BOT/bot.py
       port: 80
+      persistenceMount: /data
