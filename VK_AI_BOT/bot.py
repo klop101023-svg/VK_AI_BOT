@@ -88,49 +88,55 @@ def send_typing(user_id):
         pass
 
 # === ПОИСК В ИНТЕРНЕТЕ ===
-def search_web(query):
-    """Ищет информацию через DuckDuckGo API"""
+def search_duckduckgo(query):
     try:
         url = "https://api.duckduckgo.com/"
-        params = {
-            "q": query,
-            "format": "json",
-            "no_html": 1,
-            "skip_disambig": 1
-        }
+        params = {"q": query, "format": "json", "no_html": 1, "skip_disambig": 1}
         response = requests.get(url, params=params, timeout=10)
         data = response.json()
         
         if data.get("AbstractText"):
             return data["AbstractText"]
-        
         if data.get("RelatedTopics"):
             for topic in data["RelatedTopics"]:
                 if "Text" in topic:
                     return topic["Text"]
-        
         return None
-    except Exception as e:
-        print(f"❌ Ошибка поиска: {e}")
+    except:
         return None
 
-def need_search(query):
-    """Определяет, нужен ли поиск в интернете"""
+def get_usd_rate():
     try:
-        response = client.chat.completions.create(
-            model=config.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "Определи, нужна ли актуальная информация из интернета для ответа на вопрос пользователя. Если нужна — ответь только 'да'. Если не нужна — 'нет'."},
-                {"role": "user", "content": query}
-            ],
-            temperature=0.1,
-            max_tokens=5,
-        )
-        answer = response.choices[0].message.content.lower().strip()
-        return "да" in answer
-    except Exception as e:
-        print(f"❌ Ошибка анализа: {e}")
-        return False
+        url = "https://www.cbr-xml-daily.ru/daily_json.js"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        if data and "Valute" in data and "USD" in data["Valute"]:
+            return f"Курс доллара США: {data['Valute']['USD']['Value']:.2f} рублей"
+    except:
+        pass
+    return None
+
+def get_weather(city="Москва"):
+    try:
+        url = f"https://wttr.in/{city}?format=%C+%t+%w"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            return f"Погода в {city}: {response.text.strip()}"
+    except:
+        pass
+    return None
+
+def get_news():
+    try:
+        url = "https://api.duckduckgo.com/"
+        params = {"q": "новости сегодня", "format": "json", "no_html": 1}
+        response = requests.get(url, params=params, timeout=5)
+        data = response.json()
+        if data.get("AbstractText"):
+            return data["AbstractText"]
+    except:
+        pass
+    return None
 
 def handle_commands(user_id, text):
     if text == "/start" or text == "🌿 Главная":
@@ -149,7 +155,7 @@ def handle_commands(user_id, text):
             "/clear — очистить историю\n"
             "/rules — правила\n"
             "/info — информация\n\n"
-            "💡 Просто задай любой вопрос, и я найду ответ в интернете!")
+            "💡 Просто задай любой вопрос!")
         return True
 
     elif text == "/clear" or text == "🧹 Очистить":
@@ -195,26 +201,53 @@ def handle_message(event):
 
     send_typing(user_id)
 
-    # === АВТОМАТИЧЕСКИЙ ПОИСК В ИНТЕРНЕТЕ ===
-    if need_search(text):
-        send_message(user_id, "🔍 Ищу информацию в интернете...")
-        result = search_web(text)
-        if result:
-            answer = f"🔍 *Результат поиска:*\n\n{result}\n\n📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-            send_message(user_id, answer)
+    lower_text = text.lower()
+
+    # === ПРЯМЫЕ ЗАПРОСЫ ===
+    if "курс" in lower_text and "доллар" in lower_text:
+        rate = get_usd_rate()
+        if rate:
+            send_message(user_id, f"💰 {rate}")
             return
         else:
-            send_message(user_id, "🔍 Не удалось найти информацию. Отвечаю из своих знаний...")
+            send_message(user_id, "⚠️ Не удалось получить курс. Попробуй позже.")
+            return
+
+    if "погод" in lower_text:
+        city = "Москва"
+        for word in text.split():
+            if word.istitle() and len(word) > 2 and word not in ["Погода", "Какая"]:
+                city = word
+                break
+        weather = get_weather(city)
+        if weather:
+            send_message(user_id, f"🌤️ {weather}")
+            return
+        else:
+            send_message(user_id, f"⚠️ Не удалось получить погоду для {city}.")
+            return
+
+    if "новости" in lower_text:
+        news = get_news()
+        if news:
+            send_message(user_id, f"📰 {news}")
+            return
+        else:
+            send_message(user_id, "⚠️ Не удалось получить новости.")
+            return
+
+    # === УНИВЕРСАЛЬНЫЙ ПОИСК ===
+    if "кто" in lower_text or "что" in lower_text or "где" in lower_text or "когда" in lower_text or "почему" in lower_text:
+        result = search_duckduckgo(text)
+        if result:
+            send_message(user_id, f"🔍 {result}")
+            return
 
     # === AI-ОТВЕТ ===
     try:
         history = load_memory(user_id)
         messages = [
-            {"role": "system", "content": """Ты — Ботаник, умный и дружелюбный AI-помощник.
-
-Ты НЕ ботаник (не учёный-растениевод). Твоё имя — Ботаник, потому что ты умный, носишь очки и любишь знания.
-
-Отвечай на русском языке, кратко, по делу, с лёгким юмором. Если не знаешь — честно скажи об этом."""}
+            {"role": "system", "content": "Ты — Ботаник, умный AI-помощник. Отвечай на русском, кратко, по делу, с лёгким юмором. Если не знаешь — так и скажи."}
         ]
         messages.extend(history)
         messages.append({"role": "user", "content": text})
@@ -240,7 +273,7 @@ def handle_message(event):
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
     print(f"📌 Память: до {MAX_MEMORY} сообщений")
-    print("📌 Поиск: автоматический (AI определяет)")
+    print("📌 Поиск: автоматический")
     print("⏳ Ожидаю сообщения...")
 
     try:
