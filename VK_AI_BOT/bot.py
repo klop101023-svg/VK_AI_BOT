@@ -89,8 +89,31 @@ def send_typing(user_id):
     except:
         pass
 
-# === ПОИСК В ИНТЕРНЕТЕ ===
+# === ПОИСК В ИНТЕРНЕТЕ (УЛУЧШЕННЫЙ) ===
+def get_usd_rate():
+    """Получает курс доллара через API"""
+    try:
+        url = "https://api.exchangerate-api.com/v4/latest/USD"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        if data and "rates" in data and "RUB" in data["rates"]:
+            return f"Курс доллара США: {data['rates']['RUB']:.2f} рублей"
+    except:
+        pass
+    
+    try:
+        url = "https://www.cbr-xml-daily.ru/daily_json.js"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        if data and "Valute" in data and "USD" in data["Valute"]:
+            return f"Курс доллара США: {data['Valute']['USD']['Value']:.2f} рублей"
+    except:
+        pass
+    
+    return None
+
 def search_web(query):
+    """Ищет информацию через DuckDuckGo API"""
     try:
         url = "https://api.duckduckgo.com/"
         params = {"q": query, "format": "json", "no_html": 1, "skip_disambig": 1}
@@ -108,15 +131,22 @@ def search_web(query):
         return None
 
 def need_search(query):
-    """Определяет, нужна ли актуальная информация по запросу"""
-    keywords = [
-        "курс", "доллар", "евро", "рубль", "валюта", "биткоин",
-        "погода", "температура", "дождь", "снег", "ветер", "прогноз",
-        "новости", "сегодня", "сейчас", "случилось", "произошло",
-        "завтра", "вчера", "время", "дата", "сколько", "цена"
-    ]
+    """Определяет, нужна ли актуальная информация"""
     query_lower = query.lower()
-    return any(keyword in query_lower for keyword in keywords)
+    
+    # Курс валют
+    if any(word in query_lower for word in ["курс", "доллар", "евро", "валюта", "биткоин", "рубль"]):
+        return True, "currency"
+    
+    # Погода
+    if any(word in query_lower for word in ["погода", "температура", "дождь", "снег", "ветер", "прогноз"]):
+        return True, "weather"
+    
+    # Новости
+    if any(word in query_lower for word in ["новости", "сегодня", "сейчас", "случилось", "произошло"]):
+        return True, "news"
+    
+    return False, None
 
 # === КОМАНДЫ ===
 def handle_commands(user_id, text):
@@ -186,12 +216,23 @@ def handle_message(event):
 
     send_typing(user_id)
 
-    # === ПОИСК В ИНТЕРНЕТЕ ===
-    if need_search(text):
+    # === АВТОМАТИЧЕСКИЙ ПОИСК ===
+    need_search_flag, search_type = need_search(text)
+    
+    if need_search_flag:
         send_message(user_id, "🔍 Ищу актуальную информацию...")
-        search_result = search_web(text)
-        if search_result:
-            answer = f"🔍 *Актуальная информация:*\n\n{search_result}\n\n📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+        result = None
+        
+        # Для курса валют используем специальный API
+        if search_type == "currency":
+            result = get_usd_rate()
+        
+        # Для остальных запросов — DuckDuckGo
+        if not result:
+            result = search_web(text)
+        
+        if result:
+            answer = f"🔍 *Актуальная информация:*\n\n{result}\n\n📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
             send_message(user_id, answer)
             return
         else:
