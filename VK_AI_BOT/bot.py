@@ -72,7 +72,6 @@ def get_main_keyboard():
     keyboard.add_button("📜 Правила", color=VkKeyboardColor.PRIMARY)
     return keyboard.get_keyboard()
 
-# === ОТПРАВКА ===
 def send_message(user_id, text, keyboard=None):
     try:
         vk.messages.send(
@@ -104,25 +103,20 @@ def search_web(query):
                 if "Text" in topic:
                     return topic["Text"]
         return None
-    except:
+    except Exception as e:
+        print(f"❌ Ошибка поиска: {e}")
         return None
 
-# === АНАЛИЗ ЗАПРОСА: НУЖЕН ЛИ ПОИСК? ===
 def need_search(query):
-    try:
-        response = client.chat.completions.create(
-            model=config.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "Ты — анализатор запросов. Определи, нужна ли актуальная информация из интернета, чтобы ответить на вопрос пользователя. Если нужна — ответь только 'да'. Если не нужна — 'нет'."},
-                {"role": "user", "content": f"Вопрос: {query}"}
-            ],
-            temperature=0.1,
-            max_tokens=5,
-        )
-        answer = response.choices[0].message.content.lower().strip()
-        return "да" in answer
-    except:
-        return False
+    """Определяет, нужна ли актуальная информация по запросу"""
+    keywords = [
+        "курс", "доллар", "евро", "рубль", "валюта", "биткоин",
+        "погода", "температура", "дождь", "снег", "ветер", "прогноз",
+        "новости", "сегодня", "сейчас", "случилось", "произошло",
+        "завтра", "вчера", "время", "дата", "сколько", "цена"
+    ]
+    query_lower = query.lower()
+    return any(keyword in query_lower for keyword in keywords)
 
 # === КОМАНДЫ ===
 def handle_commands(user_id, text):
@@ -131,7 +125,7 @@ def handle_commands(user_id, text):
             "🌿 Привет! Я Ботаник — твой умный AI-помощник.\n\n"
             "📌 Я умею:\n"
             "• Отвечать на любые вопросы\n"
-            "• Искать актуальную информацию в интернете\n"
+            "• Искать курс валют, погоду, новости\n"
             "• Запоминать ход беседы\n\n"
             "❓ Напиши /help, чтобы увидеть все команды.")
         return True
@@ -144,7 +138,7 @@ def handle_commands(user_id, text):
             "/clear — очистить историю\n"
             "/rules — правила\n"
             "/info — информация\n\n"
-            "💡 Просто задай любой вопрос — я сам решу, искать ответ в интернете или ответить из своих знаний.")
+            "💡 Просто спроси меня о курсе валют, погоде или новостях!")
         return True
 
     elif text == "/clear" or text == "🧹 Очистить":
@@ -192,7 +186,7 @@ def handle_message(event):
 
     send_typing(user_id)
 
-    # === АНАЛИЗ: НУЖЕН ЛИ ПОИСК? ===
+    # === ПОИСК В ИНТЕРНЕТЕ ===
     if need_search(text):
         send_message(user_id, "🔍 Ищу актуальную информацию...")
         search_result = search_web(text)
@@ -230,11 +224,10 @@ def handle_message(event):
         print(f"❌ Ошибка AI: {e}")
         send_message(user_id, "⚠️ Произошла ошибка. Попробуйте позже.")
 
-# === ЗАПУСК ===
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
     print(f"📌 Память: до {MAX_MEMORY} сообщений")
-    print(f"📌 Поиск: автоматический (AI определяет)")
+    print(f"📌 Поиск: автоматический")
     print("⏳ Ожидаю сообщения...")
 
     try:
