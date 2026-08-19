@@ -17,7 +17,6 @@ client = openai.OpenAI(
     base_url=config.OPENAI_BASE_URL,
 )
 
-# === ПАМЯТЬ ===
 DATA_DIR = "/data"
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
@@ -60,7 +59,6 @@ def clear_memory(user_id):
     with open(MEMORY_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# === КЛАВИАТУРА ===
 def get_main_keyboard():
     keyboard = VkKeyboard(one_time=False)
     keyboard.add_button("🌿 Главная", color=VkKeyboardColor.PRIMARY)
@@ -89,114 +87,43 @@ def send_typing(user_id):
     except:
         pass
 
-# === ПОИСК В ИНТЕРНЕТЕ ===
 def get_usd_rate():
-    """Получает курс доллара через публичный API"""
-    try:
-        url = "https://api.exchangerate-api.com/v4/latest/USD"
-        response = requests.get(url, timeout=5)
-        data = response.json()
-        if data and "rates" in data and "RUB" in data["rates"]:
-            return f"Курс доллара США: {data['rates']['RUB']:.2f} рублей"
-    except:
-        pass
-    
+    """Получает курс доллара"""
     try:
         url = "https://www.cbr-xml-daily.ru/daily_json.js"
         response = requests.get(url, timeout=5)
         data = response.json()
         if data and "Valute" in data and "USD" in data["Valute"]:
             return f"Курс доллара США: {data['Valute']['USD']['Value']:.2f} рублей"
-    except:
-        pass
+    except Exception as e:
+        print(f"❌ Ошибка получения курса: {e}")
     
     return None
 
-def search_web(query):
-    """Ищет информацию через DuckDuckGo"""
-    try:
-        url = "https://api.duckduckgo.com/"
-        params = {"q": query, "format": "json", "no_html": 1, "skip_disambig": 1}
-        response = requests.get(url, params=params, timeout=10)
-        data = response.json()
-        if data.get("AbstractText"):
-            return data["AbstractText"]
-        if data.get("RelatedTopics"):
-            for topic in data["RelatedTopics"]:
-                if "Text" in topic:
-                    return topic["Text"]
-        return None
-    except:
-        return None
-
-def need_search(text):
-    """Определяет, нужен ли поиск"""
-    text_lower = text.lower()
-    
-    # Курс валют
-    if any(word in text_lower for word in ["курс", "доллар", "евро", "валюта", "биткоин", "рубль", "сколько стоит"]):
-        return "currency"
-    
-    # Погода
-    if any(word in text_lower for word in ["погода", "температура", "дождь", "снег", "ветер", "прогноз"]):
-        return "weather"
-    
-    # Новости
-    if any(word in text_lower for word in ["новости", "сегодня", "сейчас", "случилось", "произошло"]):
-        return "news"
-    
-    return None
-
-# === КОМАНДЫ ===
 def handle_commands(user_id, text):
     if text == "/start" or text == "🌿 Главная":
-        send_message(user_id,
-            "🌿 Привет! Я Ботаник — твой умный AI-помощник.\n\n"
-            "📌 Я умею:\n"
-            "• Отвечать на любые вопросы\n"
-            "• Искать курс валют, погоду, новости\n"
-            "• Запоминать ход беседы\n\n"
-            "❓ Напиши /help, чтобы увидеть все команды.")
+        send_message(user_id, "🌿 Привет! Я Ботаник — твой умный AI-помощник.\n\nНапиши /help для списка команд.")
         return True
 
     elif text == "/help" or text == "📋 Команды":
-        send_message(user_id,
-            "📋 *Список команд:*\n\n"
-            "/start — приветствие\n"
-            "/help — этот список\n"
-            "/clear — очистить историю\n"
-            "/rules — правила\n"
-            "/info — информация\n\n"
-            "💡 Просто спроси меня о курсе валют, погоде или новостях!")
+        send_message(user_id, "📋 Команды:\n/start — приветствие\n/help — этот список\n/clear — очистить историю\n/rules — правила\n/info — информация\n\n💡 Спроси меня о курсе доллара!")
         return True
 
     elif text == "/clear" or text == "🧹 Очистить":
         clear_memory(user_id)
-        send_message(user_id, "🧹 История диалога очищена.")
+        send_message(user_id, "🧹 История очищена.")
         return True
 
     elif text == "/rules" or text == "📜 Правила":
-        send_message(user_id,
-            "📜 *Правила:*\n\n"
-            "1. Бот создан для помощи\n"
-            "2. Не спамьте\n"
-            "3. Бот не хранит переписку\n"
-            "4. Запрещены оскорбления\n"
-            "5. Бот работает 24/7")
+        send_message(user_id, "📜 Правила: будь вежлив, не спамь, бот не хранит переписку.")
         return True
 
     elif text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id,
-            f"🤖 *Ботаник*\n"
-            f"📌 Модель: {config.OPENAI_MODEL}\n"
-            f"📌 Память: {MAX_MEMORY} сообщений\n"
-            f"📌 Поиск: автоматический\n"
-            f"📌 Статус: онлайн 24/7")
+        send_message(user_id, f"🤖 Ботаник\nМодель: {config.OPENAI_MODEL}\nПамять: {MAX_MEMORY} сообщений\nСтатус: онлайн 24/7")
         return True
 
     return False
 
-# === ОСНОВНОЙ ОБРАБОТЧИК ===
 def handle_message(event):
     user_id = event.object.message['from_id']
     text = event.object.message.get('text', '')
@@ -206,7 +133,7 @@ def handle_message(event):
         return
 
     if text == "start" or text == "начать":
-        send_message(user_id, "🌿 Привет! Я Ботаник. Задавай любой вопрос.")
+        send_message(user_id, "🌿 Привет! Я Ботаник.")
         return
 
     if text.startswith('/') or text in ["🌿 Главная", "📋 Команды", "ℹ️ Инфо", "🧹 Очистить", "📜 Правила"]:
@@ -215,38 +142,22 @@ def handle_message(event):
 
     send_typing(user_id)
 
-    # === АВТОМАТИЧЕСКИЙ ПОИСК ===
-    search_type = need_search(text)
-    
-    if search_type == "currency":
+    # === ПРОВЕРКА НА ЗАПРОС КУРСА ===
+    if "курс" in text.lower() or "доллар" in text.lower():
         send_message(user_id, "💱 Уточняю курс...")
-        result = get_usd_rate()
-        if result:
-            send_message(user_id, result)
+        rate = get_usd_rate()
+        if rate:
+            send_message(user_id, rate)
             return
         else:
             send_message(user_id, "⚠️ Не удалось получить курс. Попробуй позже.")
-            return
-    
-    elif search_type == "weather":
-        send_message(user_id, "🌤️ Ищу погоду...")
-        result = search_web(text)
-        if result:
-            send_message(user_id, f"🌤️ {result}")
-            return
-    
-    elif search_type == "news":
-        send_message(user_id, "📰 Ищу новости...")
-        result = search_web(text)
-        if result:
-            send_message(user_id, f"📰 {result}")
             return
 
     # === AI-ОТВЕТ ===
     try:
         history = load_memory(user_id)
         messages = [
-            {"role": "system", "content": "Ты — Ботаник, умный AI-помощник. Отвечай на русском языке, кратко, по делу, с лёгким юмором. Если не знаешь — честно скажи об этом."}
+            {"role": "system", "content": "Ты — Ботаник, умный AI-помощник. Отвечай на русском, кратко, по делу."}
         ]
         messages.extend(history)
         messages.append({"role": "user", "content": text})
@@ -271,8 +182,6 @@ def handle_message(event):
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
-    print(f"📌 Память: до {MAX_MEMORY} сообщений")
-    print(f"📌 Поиск: автоматический")
     print("⏳ Ожидаю сообщения...")
 
     try:
