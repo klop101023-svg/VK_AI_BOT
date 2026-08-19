@@ -89,12 +89,12 @@ def send_typing(user_id):
     except:
         pass
 
-# === ПОИСК В ИНТЕРНЕТЕ (УЛУЧШЕННЫЙ) ===
+# === ПОИСК В ИНТЕРНЕТЕ ===
 def get_usd_rate():
-    """Получает курс доллара через API"""
+    """Получает курс доллара через публичный API"""
     try:
         url = "https://api.exchangerate-api.com/v4/latest/USD"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=5)
         data = response.json()
         if data and "rates" in data and "RUB" in data["rates"]:
             return f"Курс доллара США: {data['rates']['RUB']:.2f} рублей"
@@ -103,7 +103,7 @@ def get_usd_rate():
     
     try:
         url = "https://www.cbr-xml-daily.ru/daily_json.js"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=5)
         data = response.json()
         if data and "Valute" in data and "USD" in data["Valute"]:
             return f"Курс доллара США: {data['Valute']['USD']['Value']:.2f} рублей"
@@ -113,7 +113,7 @@ def get_usd_rate():
     return None
 
 def search_web(query):
-    """Ищет информацию через DuckDuckGo API"""
+    """Ищет информацию через DuckDuckGo"""
     try:
         url = "https://api.duckduckgo.com/"
         params = {"q": query, "format": "json", "no_html": 1, "skip_disambig": 1}
@@ -126,27 +126,26 @@ def search_web(query):
                 if "Text" in topic:
                     return topic["Text"]
         return None
-    except Exception as e:
-        print(f"❌ Ошибка поиска: {e}")
+    except:
         return None
 
-def need_search(query):
-    """Определяет, нужна ли актуальная информация"""
-    query_lower = query.lower()
+def need_search(text):
+    """Определяет, нужен ли поиск"""
+    text_lower = text.lower()
     
     # Курс валют
-    if any(word in query_lower for word in ["курс", "доллар", "евро", "валюта", "биткоин", "рубль"]):
-        return True, "currency"
+    if any(word in text_lower for word in ["курс", "доллар", "евро", "валюта", "биткоин", "рубль", "сколько стоит"]):
+        return "currency"
     
     # Погода
-    if any(word in query_lower for word in ["погода", "температура", "дождь", "снег", "ветер", "прогноз"]):
-        return True, "weather"
+    if any(word in text_lower for word in ["погода", "температура", "дождь", "снег", "ветер", "прогноз"]):
+        return "weather"
     
     # Новости
-    if any(word in query_lower for word in ["новости", "сегодня", "сейчас", "случилось", "произошло"]):
-        return True, "news"
+    if any(word in text_lower for word in ["новости", "сегодня", "сейчас", "случилось", "произошло"]):
+        return "news"
     
-    return False, None
+    return None
 
 # === КОМАНДЫ ===
 def handle_commands(user_id, text):
@@ -217,26 +216,31 @@ def handle_message(event):
     send_typing(user_id)
 
     # === АВТОМАТИЧЕСКИЙ ПОИСК ===
-    need_search_flag, search_type = need_search(text)
+    search_type = need_search(text)
     
-    if need_search_flag:
-        send_message(user_id, "🔍 Ищу актуальную информацию...")
-        result = None
-        
-        # Для курса валют используем специальный API
-        if search_type == "currency":
-            result = get_usd_rate()
-        
-        # Для остальных запросов — DuckDuckGo
-        if not result:
-            result = search_web(text)
-        
+    if search_type == "currency":
+        send_message(user_id, "💱 Уточняю курс...")
+        result = get_usd_rate()
         if result:
-            answer = f"🔍 *Актуальная информация:*\n\n{result}\n\n📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-            send_message(user_id, answer)
+            send_message(user_id, result)
             return
         else:
-            send_message(user_id, "🔍 Не удалось найти информацию. Отвечаю из своих знаний...")
+            send_message(user_id, "⚠️ Не удалось получить курс. Попробуй позже.")
+            return
+    
+    elif search_type == "weather":
+        send_message(user_id, "🌤️ Ищу погоду...")
+        result = search_web(text)
+        if result:
+            send_message(user_id, f"🌤️ {result}")
+            return
+    
+    elif search_type == "news":
+        send_message(user_id, "📰 Ищу новости...")
+        result = search_web(text)
+        if result:
+            send_message(user_id, f"📰 {result}")
+            return
 
     # === AI-ОТВЕТ ===
     try:
