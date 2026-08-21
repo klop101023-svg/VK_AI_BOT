@@ -4,7 +4,6 @@ from vk_api.utils import get_random_id
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 import config
 import requests
-from datetime import datetime
 
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
@@ -44,37 +43,9 @@ def search_web(query):
                 if "Text" in topic:
                     return topic["Text"]
         return None
-    except:
+    except Exception as e:
+        print(f"❌ Ошибка поиска: {e}")
         return None
-
-def get_usd_rate():
-    try:
-        url = "https://api.exchangerate-api.com/v4/latest/USD"
-        response = requests.get(url, timeout=5)
-        data = response.json()
-        if data and "rates" in data and "RUB" in data["rates"]:
-            return f"Курс доллара США: {data['rates']['RUB']:.2f} рублей"
-    except:
-        pass
-    try:
-        url = "https://www.cbr-xml-daily.ru/daily_json.js"
-        response = requests.get(url, timeout=5)
-        data = response.json()
-        if data and "Valute" in data and "USD" in data["Valute"]:
-            return f"Курс доллара США: {data['Valute']['USD']['Value']:.2f} рублей"
-    except:
-        pass
-    return None
-
-def get_weather(city="Москва"):
-    try:
-        url = f"https://wttr.in/{city}?format=%C+%t+%w"
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            return f"Погода в {city}: {response.text.strip()}"
-    except:
-        pass
-    return None
 
 def handle_message(event):
     user_id = event.object.message['from_id']
@@ -84,13 +55,12 @@ def handle_message(event):
     if not text:
         return
 
-    # === КОМАНДЫ ===
     if text == "/start" or text == "🌿 Главная":
-        send_message(user_id, "🌿 Привет! Я Ботаник.\n\nСпроси меня о курсе доллара, погоде или чём угодно!")
+        send_message(user_id, "🌿 Привет! Я Ботаник. Задавай любой вопрос, я поищу в интернете.")
         return
 
     if text == "/help" or text == "📋 Команды":
-        send_message(user_id, "📋 Команды: /start, /help, /clear, /rules, /info")
+        send_message(user_id, "📋 Просто напиши вопрос, и я найду ответ в интернете.")
         return
 
     if text == "/clear" or text == "🧹 Очистить":
@@ -105,39 +75,14 @@ def handle_message(event):
         send_message(user_id, f"🤖 Ботаник\nСтатус: онлайн")
         return
 
-    # === ПОИСК ===
-    lower_text = text.lower()
-
-    if "курс" in lower_text and "доллар" in lower_text:
-        rate = get_usd_rate()
-        if rate:
-            send_message(user_id, f"💰 {rate}")
-            return
-        else:
-            send_message(user_id, "⚠️ Не удалось получить курс. Попробуй позже.")
-            return
-
-    if "погод" in lower_text:
-        city = "Москва"
-        for word in text.split():
-            if word.istitle() and len(word) > 2 and word not in ["Погода", "Какая"]:
-                city = word
-                break
-        weather = get_weather(city)
-        if weather:
-            send_message(user_id, f"🌤️ {weather}")
-            return
-        else:
-            send_message(user_id, f"⚠️ Не удалось получить погоду для {city}.")
-            return
-
-    # === УНИВЕРСАЛЬНЫЙ ПОИСК ===
+    # === ПОИСК В ИНТЕРНЕТЕ ===
+    send_message(user_id, "🔍 Ищу в интернете...")
     result = search_web(text)
+    
     if result:
         send_message(user_id, f"🔍 {result}")
-        return
-
-    send_message(user_id, "❓ Не нашёл информацию по этому запросу. Попробуй переформулировать.")
+    else:
+        send_message(user_id, "❌ Не нашёл информацию по этому запросу. Попробуй переформулировать.")
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
