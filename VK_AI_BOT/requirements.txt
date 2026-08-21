@@ -1,6 +1,0 @@
-python-dotenv
-vk_api
-openai
-requests
-Pillow
-reportlab
