@@ -30,7 +30,8 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def search_web(query):
+def search_duckduckgo(query):
+    """Поиск через DuckDuckGo API"""
     try:
         url = "https://api.duckduckgo.com/"
         params = {"q": query, "format": "json", "no_html": 1, "skip_disambig": 1}
@@ -44,8 +45,35 @@ def search_web(query):
                     return topic["Text"]
         return None
     except Exception as e:
-        print(f"❌ Ошибка поиска: {e}")
+        print(f"❌ Ошибка DuckDuckGo: {e}")
         return None
+
+def get_usd_rate():
+    """Курс доллара от ЦБ РФ"""
+    try:
+        url = "https://www.cbr-xml-daily.ru/daily_json.js"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        if data and "Valute" in data and "USD" in data["Valute"]:
+            return f"Курс доллара США: {data['Valute']['USD']['Value']:.2f} рублей"
+    except Exception as e:
+        print(f"❌ Ошибка курса: {e}")
+    return None
+
+def get_weather(city="Москва"):
+    """Погода через wttr.in"""
+    try:
+        url = f"https://wttr.in/{city}?format=%C+%t+%w"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            return f"Погода в {city}: {response.text.strip()}"
+    except Exception as e:
+        print(f"❌ Ошибка погоды: {e}")
+    return None
+
+def search_web(query):
+    """Универсальный поиск: пробует DuckDuckGo, потом возвращает None"""
+    return search_duckduckgo(query)
 
 def handle_message(event):
     user_id = event.object.message['from_id']
@@ -56,11 +84,11 @@ def handle_message(event):
         return
 
     if text == "/start" or text == "🌿 Главная":
-        send_message(user_id, "🌿 Привет! Я Ботаник. Задавай любой вопрос, я поищу в интернете.")
+        send_message(user_id, "🌿 Привет! Я Ботаник.\n\n📌 Задай любой вопрос — я найду ответ в интернете.")
         return
 
     if text == "/help" or text == "📋 Команды":
-        send_message(user_id, "📋 Просто напиши вопрос, и я найду ответ в интернете.")
+        send_message(user_id, "📋 Просто напиши вопрос. Я ищу в интернете.")
         return
 
     if text == "/clear" or text == "🧹 Очистить":
@@ -72,17 +100,44 @@ def handle_message(event):
         return
 
     if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\nСтатус: онлайн")
+        send_message(user_id, f"🤖 Ботаник\n📌 Поиск: интернет\n📌 Статус: онлайн")
         return
 
-    # === ПОИСК В ИНТЕРНЕТЕ ===
+    lower_text = text.lower()
+
+    # === КУРС ДОЛЛАРА ===
+    if "курс" in lower_text and "доллар" in lower_text:
+        rate = get_usd_rate()
+        if rate:
+            send_message(user_id, f"💰 {rate}")
+            return
+        else:
+            send_message(user_id, "⚠️ Не удалось получить курс. Попробуй позже.")
+            return
+
+    # === ПОГОДА ===
+    if "погод" in lower_text:
+        city = "Москва"
+        for word in text.split():
+            if word.istitle() and len(word) > 2 and word not in ["Погода", "Какая"]:
+                city = word
+                break
+        weather = get_weather(city)
+        if weather:
+            send_message(user_id, f"🌤️ {weather}")
+            return
+        else:
+            send_message(user_id, f"⚠️ Не удалось получить погоду для {city}.")
+            return
+
+    # === УНИВЕРСАЛЬНЫЙ ПОИСК ===
     send_message(user_id, "🔍 Ищу в интернете...")
     result = search_web(text)
-    
+
     if result:
         send_message(user_id, f"🔍 {result}")
     else:
-        send_message(user_id, "❌ Не нашёл информацию по этому запросу. Попробуй переформулировать.")
+        send_message(user_id, "❌ Не нашёл информацию. Попробуй переформулировать вопрос.")
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
