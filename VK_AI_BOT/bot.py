@@ -3,6 +3,7 @@ from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
 import config
 import requests
+import json
 
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
@@ -14,13 +15,20 @@ def send_message(user_id, text):
             message=text,
             random_id=get_random_id()
         )
+        print(f"✅ Сообщение отправлено {user_id}")
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def search_web(query):
+def search_google(query):
+    """Поиск через DuckDuckGo (бесплатно, без ключа)"""
     try:
         url = "https://api.duckduckgo.com/"
-        params = {"q": query, "format": "json", "no_html": 1, "skip_disambig": 1}
+        params = {
+            "q": query,
+            "format": "json",
+            "no_html": 1,
+            "skip_disambig": 1
+        }
         response = requests.get(url, params=params, timeout=10)
         data = response.json()
         
@@ -44,21 +52,21 @@ def handle_message(event):
         return
 
     if text == "/start":
-        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, я поищу в интернете.")
+        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, и я найду ответ в интернете.")
         return
 
     if text == "/help":
-        send_message(user_id, "📋 Просто напиши вопрос.")
+        send_message(user_id, "📋 Просто напиши любой вопрос.")
         return
 
-    # Поиск в интернете
-    send_message(user_id, "🔍 Ищу...")
-    result = search_web(text)
+    # === ПОИСК В ИНТЕРНЕТЕ ===
+    send_message(user_id, "🔍 Ищу в интернете...")
+    result = search_google(text)
     
     if result:
         send_message(user_id, f"🔍 {result}")
     else:
-        send_message(user_id, "❌ Не нашёл. Попробуй переформулировать.")
+        send_message(user_id, "❌ Не нашёл информацию. Попробуй переформулировать.")
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
