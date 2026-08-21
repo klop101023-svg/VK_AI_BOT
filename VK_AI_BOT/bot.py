@@ -15,12 +15,10 @@ def send_message(user_id, text):
             message=text,
             random_id=get_random_id()
         )
-        print(f"✅ Сообщение отправлено {user_id}")
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def search_google(query):
-    """Поиск через DuckDuckGo (бесплатно, без ключа)"""
+def search_duckduckgo(query):
     try:
         url = "https://api.duckduckgo.com/"
         params = {
@@ -34,10 +32,12 @@ def search_google(query):
         
         if data.get("AbstractText"):
             return data["AbstractText"]
+        
         if data.get("RelatedTopics"):
             for topic in data["RelatedTopics"]:
                 if "Text" in topic:
                     return topic["Text"]
+        
         return None
     except Exception as e:
         print(f"❌ Ошибка поиска: {e}")
@@ -52,21 +52,16 @@ def handle_message(event):
         return
 
     if text == "/start":
-        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, и я найду ответ в интернете.")
+        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос.")
         return
 
-    if text == "/help":
-        send_message(user_id, "📋 Просто напиши любой вопрос.")
-        return
-
-    # === ПОИСК В ИНТЕРНЕТЕ ===
     send_message(user_id, "🔍 Ищу в интернете...")
-    result = search_google(text)
+    result = search_duckduckgo(text)
     
     if result:
         send_message(user_id, f"🔍 {result}")
     else:
-        send_message(user_id, "❌ Не нашёл информацию. Попробуй переформулировать.")
+        send_message(user_id, "❌ Не нашёл. Попробуй переформулировать.")
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
