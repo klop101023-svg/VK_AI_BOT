@@ -13,7 +13,7 @@ vk = vk_session.get_api()
 
 # === СТАТИСТИКА ===
 STATS_FILE = "stats.json"
-ADMIN_ID = 240582209  # ЗАМЕНИ НА СВОЙ VK ID
+ADMIN_ID = 1027228715  # ЗАМЕНИ НА СВОЙ VK ID
 
 def load_stats():
     if not os.path.exists(STATS_FILE):
