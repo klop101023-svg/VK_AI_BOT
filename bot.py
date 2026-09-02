@@ -11,9 +11,13 @@ from datetime import datetime
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
 
-# === СТАТИСТИКА ===
+client = openai.OpenAI(
+    api_key=config.OPENAI_API_KEY,
+    base_url=config.OPENAI_BASE_URL,
+)
+
 STATS_FILE = "stats.json"
-ADMIN_ID = 1027228715  # ЗАМЕНИ НА СВОЙ VK ID
+ADMIN_ID = 1027228715
 
 def load_stats():
     if not os.path.exists(STATS_FILE):
@@ -45,7 +49,6 @@ def update_stats(user_id):
     stats[user_id_str]["messages"] += 1
     save_stats(stats)
 
-# === КЛАВИАТУРА ===
 def get_main_keyboard():
     keyboard = VkKeyboard(one_time=False)
     keyboard.add_button("🌿 Главная", color=VkKeyboardColor.PRIMARY)
@@ -132,8 +135,7 @@ def handle_message(event):
         return
 
     if text == "/clear" or text == "🧹 Очистить":
-        clear_memory(user_id)
-        send_message(user_id, "🧹 История диалога очищена.")
+        send_message(user_id, "🧹 История очищена.")
         return
 
     if text == "/rules" or text == "📜 Правила":
@@ -144,17 +146,29 @@ def handle_message(event):
         send_message(user_id, f"🤖 Ботаник\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн\n📌 Поиск: интернет")
         return
 
+    # === ПОИСК В ИНТЕРНЕТЕ ===
     send_message(user_id, "🔍 Ищу...")
     result = search_web(text)
 
     if result:
         send_message(user_id, f"🔍 {result}")
     else:
-        send_message(user_id, "❌ Не нашёл. Попробуй переформулировать.")
+        # Если поиск не нашёл — используем AI
+        try:
+            response = client.chat.completions.create(
+                model=config.OPENAI_MODEL,
+                messages=[{"role": "user", "content": text}],
+                temperature=0.7,
+                max_tokens=500,
+            )
+            answer = response.choices[0].message.content
+            send_message(user_id, answer)
+        except:
+            send_message(user_id, "❌ Не нашёл в интернете и не смог ответить. Попробуй переформулировать.")
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
-    print(f"📌 Статистика: включена")
+    print(f"📌 Админ ID: {ADMIN_ID}")
     print("⏳ Ожидаю сообщения...")
 
     try:
