@@ -1,6 +1,10 @@
-VK_TOKEN="vk1.a.uf8THiz1YB04Dt-vL0Wsonksp5u1sJcM21B4d19Kqt_M8UlnmBEXZ7xDBjVWLNromJMEtFiogFcMR6AWggbq9rmUuNCHPfCZQJGgnibZn81PcEmb6UbR1R5JpOfoKrhX52Yky1f0mCWdUOc2f7eQ1plLMpt88NFOe8NceXYQ4q5SnLR5JXZSwvaGWGRMGWaxtqZNPvOdO5qFBGCWGu0h7g"
-GROUP_ID="240582209"
-OPENAI_API_KEY="sk-aitunnel-zmTlspbtbVI3tce7xDNI7dvBQFf79g0S"
-OPENAI_BASE_URL="https://api.aitunnel.ru/v1"
-OPENAI_MODEL="qwen/qwen3-coder"
-QWEN_PROXY_URL="http://localhost:3264"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+VK_TOKEN = os.getenv("VK_TOKEN")
+GROUP_ID = os.getenv("GROUP_ID")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.aitunnel.ru/v1")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "qwen/qwen3-coder")
