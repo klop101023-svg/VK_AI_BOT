@@ -7,15 +7,9 @@ import requests
 import json
 import os
 from datetime import datetime
-import openai  # <--- ЭТОТ ИМПОРТ БЫЛ ПРОПУЩЕН
 
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
-
-client = openai.OpenAI(
-    api_key=config.OPENAI_API_KEY,
-    base_url=config.OPENAI_BASE_URL,
-)
 
 STATS_FILE = "/data/stats.json"
 ADMIN_ID = 1027228715
@@ -153,18 +147,7 @@ def handle_message(event):
     if result:
         send_message(user_id, f"🔍 {result}")
     else:
-        try:
-            response = client.chat.completions.create(
-                model=config.OPENAI_MODEL,
-                messages=[{"role": "user", "content": text}],
-                temperature=0.7,
-                max_tokens=500,
-            )
-            answer = response.choices[0].message.content
-            send_message(user_id, answer)
-        except Exception as e:
-            print(f"❌ Ошибка AI: {e}")
-            send_message(user_id, "❌ Не нашёл в интернете и не смог ответить. Попробуй переформулировать.")
+        send_message(user_id, "❌ Не нашёл. Попробуй переформулировать.")
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
