@@ -7,6 +7,7 @@ import requests
 import json
 import os
 from datetime import datetime
+import openai  # <--- ЭТОТ ИМПОРТ БЫЛ ПРОПУЩЕН
 
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
@@ -146,14 +147,12 @@ def handle_message(event):
         send_message(user_id, f"🤖 Ботаник\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн\n📌 Поиск: интернет")
         return
 
-    # === ПОИСК В ИНТЕРНЕТЕ ===
     send_message(user_id, "🔍 Ищу...")
     result = search_web(text)
 
     if result:
         send_message(user_id, f"🔍 {result}")
     else:
-        # Если поиск не нашёл — используем AI
         try:
             response = client.chat.completions.create(
                 model=config.OPENAI_MODEL,
@@ -163,7 +162,8 @@ def handle_message(event):
             )
             answer = response.choices[0].message.content
             send_message(user_id, answer)
-        except:
+        except Exception as e:
+            print(f"❌ Ошибка AI: {e}")
             send_message(user_id, "❌ Не нашёл в интернете и не смог ответить. Попробуй переформулировать.")
 
 def main():
