@@ -1,0 +1,14 @@
+project:
+  name: botanik
+  description: Бот для ВКонтакте с поиском и статистикой
+
+environments:
+  - name: production
+    python:
+      version: 3.11
+    requirements:
+      path: requirements.txt
+    app:
+      command: python bot.py
+      port: 80
+      persistenceMount: /data
