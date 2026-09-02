@@ -7,9 +7,15 @@ import requests
 import json
 import os
 from datetime import datetime
+import openai
 
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
+
+client = openai.OpenAI(
+    api_key=config.OPENAI_API_KEY,
+    base_url=config.OPENAI_BASE_URL,
+)
 
 STATS_FILE = "/data/stats.json"
 ADMIN_ID = 1027228715
@@ -66,22 +72,6 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def search_web(query):
-    try:
-        url = "https://api.duckduckgo.com/"
-        params = {"q": query, "format": "json", "no_html": 1, "skip_disambig": 1}
-        response = requests.get(url, params=params, timeout=10)
-        data = response.json()
-        if data.get("AbstractText"):
-            return data["AbstractText"]
-        if data.get("RelatedTopics"):
-            for topic in data["RelatedTopics"]:
-                if "Text" in topic:
-                    return topic["Text"]
-        return None
-    except:
-        return None
-
 def handle_message(event):
     user_id = event.object.message['from_id']
     text = event.object.message.get('text', '')
@@ -93,11 +83,11 @@ def handle_message(event):
     update_stats(user_id)
 
     if text == "/start" or text == "🌿 Главная":
-        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, я поищу в интернете.\n\n📊 Статистика: /stats")
+        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос.")
         return
 
     if text == "/help" or text == "📋 Команды":
-        send_message(user_id, "📋 Команды:\n/start — приветствие\n/stats — твоя статистика\n/clear — очистить историю\n/rules — правила\n/info — информация\n\n💡 Просто задай вопрос — я найду ответ в интернете.")
+        send_message(user_id, "📋 Команды:\n/start — приветствие\n/stats — твоя статистика\n/clear — очистить историю\n/rules — правила\n/info — информация")
         return
 
     if text == "/stats" or text == "📊 Статистика":
@@ -138,16 +128,22 @@ def handle_message(event):
         return
 
     if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн\n📌 Поиск: интернет")
+        send_message(user_id, f"🤖 Ботаник\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн")
         return
 
-    send_message(user_id, "🔍 Ищу...")
-    result = search_web(text)
-
-    if result:
-        send_message(user_id, f"🔍 {result}")
-    else:
-        send_message(user_id, "❌ Не нашёл. Попробуй переформулировать.")
+    # === ОТВЕТ ЧЕРЕЗ AI ===
+    try:
+        response = client.chat.completions.create(
+            model=config.OPENAI_MODEL,
+            messages=[{"role": "user", "content": text}],
+            temperature=0.7,
+            max_tokens=500,
+        )
+        answer = response.choices[0].message.content
+        send_message(user_id, answer)
+    except Exception as e:
+        print(f"❌ Ошибка AI: {e}")
+        send_message(user_id, "⚠️ Произошла ошибка. Попробуй позже.")
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
