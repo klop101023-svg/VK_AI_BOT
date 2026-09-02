@@ -1,7 +1,6 @@
 import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
-from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 import config
 import requests
 import json
@@ -45,32 +44,16 @@ def update_stats(user_id):
     stats[user_id_str]["messages"] += 1
     save_stats(stats)
 
-# === КЛАВИАТУРА ===
-def get_main_keyboard():
-    keyboard = VkKeyboard(one_time=False)
-    keyboard.add_button("🌿 Главная", color=VkKeyboardColor.PRIMARY)
-    keyboard.add_button("📋 Команды", color=VkKeyboardColor.PRIMARY)
-    keyboard.add_line()
-    keyboard.add_button("📊 Статистика", color=VkKeyboardColor.PRIMARY)
-    keyboard.add_button("🧹 Очистить", color=VkKeyboardColor.NEGATIVE)
-    keyboard.add_line()
-    keyboard.add_button("📜 Правила", color=VkKeyboardColor.PRIMARY)
-    return keyboard.get_keyboard()
-
-# === ОТПРАВКА ===
-def send_message(user_id, text, keyboard=None):
+def send_message(user_id, text):
     try:
         vk.messages.send(
             user_id=user_id,
             message=text,
-            keyboard=keyboard if keyboard else get_main_keyboard(),
             random_id=get_random_id()
         )
-        print(f"✅ Сообщение отправлено {user_id}")
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-# === ПОИСК В ИНТЕРНЕТЕ ===
 def search_web(query):
     try:
         url = "https://api.duckduckgo.com/"
@@ -84,11 +67,9 @@ def search_web(query):
                 if "Text" in topic:
                     return topic["Text"]
         return None
-    except Exception as e:
-        print(f"❌ Ошибка поиска: {e}")
+    except:
         return None
 
-# === ОБРАБОТЧИК ===
 def handle_message(event):
     user_id = event.object.message['from_id']
     text = event.object.message.get('text', '')
@@ -97,19 +78,13 @@ def handle_message(event):
     if not text:
         return
 
-    # Обновляем статистику
     update_stats(user_id)
 
-    # === КОМАНДЫ ===
-    if text == "/start" or text == "🌿 Главная":
+    if text == "/start":
         send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, я поищу в интернете.\n\n📊 Статистика: /stats")
         return
 
-    if text == "/help" or text == "📋 Команды":
-        send_message(user_id, "📋 Команды:\n/start — приветствие\n/stats — твоя статистика\n/clear — очистить историю\n/rules — правила\n/info — информация\n\n💡 Просто задай вопрос — я найду ответ в интернете.")
-        return
-
-    if text == "/stats" or text == "📊 Статистика":
+    if text == "/stats":
         stats = load_stats()
         user_id_str = str(user_id)
         if user_id_str in stats:
@@ -138,19 +113,6 @@ def handle_message(event):
             send_message(user_id, "⛔ У тебя нет прав для этой команды.")
         return
 
-    if text == "/clear" or text == "🧹 Очистить":
-        send_message(user_id, "🧹 История очищена (функция в разработке).")
-        return
-
-    if text == "/rules" or text == "📜 Правила":
-        send_message(user_id, "📜 Правила:\n1. Будь вежлив\n2. Не спамь\n3. Бот не хранит переписку")
-        return
-
-    if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн\n📌 Поиск: интернет")
-        return
-
-    # === ПОИСК ===
     send_message(user_id, "🔍 Ищу...")
     result = search_web(text)
 
