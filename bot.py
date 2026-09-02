@@ -17,7 +17,7 @@ client = openai.OpenAI(
     base_url=config.OPENAI_BASE_URL,
 )
 
-STATS_FILE = "stats.json"
+STATS_FILE = "/data/stats.json"
 ADMIN_ID = 1027228715
 
 def load_stats():
