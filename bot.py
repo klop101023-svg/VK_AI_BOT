@@ -72,25 +72,41 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def get_usd_rate():
-    try:
-        url = "https://www.cbr-xml-daily.ru/daily_json.js"
-        response = requests.get(url, timeout=5)
-        data = response.json()
-        if data and "Valute" in data and "USD" in data["Valute"]:
-            return f"Курс доллара США: {data['Valute']['USD']['Value']:.2f} рублей"
-    except:
-        pass
-    return None
-
-def get_weather(city="Москва"):
-    try:
-        url = f"https://wttr.in/{city}?format=%C+%t+%w&lang=ru"
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            return f"Погода в {city}: {response.text.strip()}"
-    except:
-        pass
+def search_web(query):
+    """Ищет информацию через SearXNG (мета-поисковик)"""
+    instances = [
+        "https://searx.space/search",
+        "https://search.gresmash.com/search",
+        "https://searx.nd.ax/search",
+        "https://searx.be/search"
+    ]
+    
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    
+    for url in instances:
+        try:
+            params = {
+                "q": query,
+                "format": "json",
+                "categories": "general",
+                "language": "ru"
+            }
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("results"):
+                    results = data["results"][:3]
+                    answer = "🔍 *Результаты поиска:*\n\n"
+                    for i, result in enumerate(results, 1):
+                        title = result.get("title", "Без названия")
+                        snippet = result.get("snippet", "Нет описания")
+                        link = result.get("url", "#")
+                        answer += f"{i}. *{title}*\n{snippet}\n🔗 {link}\n\n"
+                    return answer
+        except Exception as e:
+            print(f"❌ Инстанс {url} не работает: {e}")
+            continue
+    
     return None
 
 def handle_message(event):
@@ -103,11 +119,11 @@ def handle_message(event):
 
     update_stats(user_id)
 
-    # === КОМАНДЫ ===
     if text == "/start" or text == "🌿 Главная":
-        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, я отвечу с помощью AI.\n\n"
-                              "💰 Спроси меня о курсе доллара\n"
-                              "🌤️ Спроси о погоде в любом городе")
+        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, я найду ответ в интернете.\n\n"
+                              "🔍 Я ищу информацию через SearXNG\n"
+                              "💰 Спроси меня о курсе валют\n"
+                              "🌤️ Спроси о погоде")
         return
 
     if text == "/help" or text == "📋 Команды":
@@ -152,39 +168,18 @@ def handle_message(event):
         return
 
     if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн")
+        send_message(user_id, f"🤖 Ботаник\n📌 Поиск: SearXNG\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн")
         return
 
-    lower_text = text.lower()
+    # === ПОИСК В ИНТЕРНЕТЕ ===
+    send_message(user_id, "🔍 Ищу в интернете...")
+    result = search_web(text)
 
-    # === КУРС ДОЛЛАРА ===
-    if "курс" in lower_text and "доллар" in lower_text:
-        rate = get_usd_rate()
-        if rate:
-            send_message(user_id, f"💰 {rate}")
-            return
-        else:
-            send_message(user_id, "⚠️ Не удалось получить курс. Попробуй позже.")
-            return
+    if result:
+        send_message(user_id, result)
+        return
 
-    # === ПОГОДА ===
-    if "погод" in lower_text:
-        city = "Москва"
-        # Пытаемся определить город из запроса
-        words = text.split()
-        for word in words:
-            if word.istitle() and len(word) > 2 and word not in ["Погода", "Какая"]:
-                city = word
-                break
-        weather = get_weather(city)
-        if weather:
-            send_message(user_id, f"🌤️ {weather}")
-            return
-        else:
-            send_message(user_id, f"⚠️ Не удалось получить погоду для {city}. Попробуй позже.")
-            return
-
-    # === AI-ОТВЕТ ===
+    # === ЕСЛИ ПОИСК НЕ НАШЁЛ — AI ===
     try:
         response = client.chat.completions.create(
             model=config.OPENAI_MODEL,
@@ -193,10 +188,10 @@ def handle_message(event):
             max_tokens=500,
         )
         answer = response.choices[0].message.content
-        send_message(user_id, answer)
+        send_message(user_id, f"💡 {answer}")
     except Exception as e:
         print(f"❌ Ошибка AI: {e}")
-        send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
+        send_message(user_id, "⚠️ Не удалось найти информацию. Попробуй позже.")
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
