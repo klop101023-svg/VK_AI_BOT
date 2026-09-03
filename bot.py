@@ -72,8 +72,8 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def search_web(query):
-    """Ищет информацию через SearXNG (мета-поисковик)"""
+def search_searxng(query):
+    """Ищет через SearXNG — пробует несколько инстансов"""
     instances = [
         "https://searx.space/search",
         "https://search.gresmash.com/search",
@@ -85,28 +85,15 @@ def search_web(query):
     
     for url in instances:
         try:
-            params = {
-                "q": query,
-                "format": "json",
-                "categories": "general",
-                "language": "ru"
-            }
+            params = {"q": query, "format": "json", "categories": "general", "language": "ru"}
             response = requests.get(url, params=params, headers=headers, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 if data.get("results"):
-                    results = data["results"][:3]
-                    answer = "🔍 *Результаты поиска:*\n\n"
-                    for i, result in enumerate(results, 1):
-                        title = result.get("title", "Без названия")
-                        snippet = result.get("snippet", "Нет описания")
-                        link = result.get("url", "#")
-                        answer += f"{i}. *{title}*\n{snippet}\n🔗 {link}\n\n"
-                    return answer
-        except Exception as e:
-            print(f"❌ Инстанс {url} не работает: {e}")
+                    result = data["results"][0]
+                    return f"🔍 {result.get('title', '')}\n{result.get('snippet', '')}\n🔗 {result.get('url', '')}"
+        except:
             continue
-    
     return None
 
 def handle_message(event):
@@ -120,10 +107,7 @@ def handle_message(event):
     update_stats(user_id)
 
     if text == "/start" or text == "🌿 Главная":
-        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, я найду ответ в интернете.\n\n"
-                              "🔍 Я ищу информацию через SearXNG\n"
-                              "💰 Спроси меня о курсе валют\n"
-                              "🌤️ Спроси о погоде")
+        send_message(user_id, "🌿 Привет! Я Ботаник.\n\n🔍 Задай любой вопрос — я поищу в интернете.\n💰 Спроси курс доллара\n🌤️ Узнай погоду")
         return
 
     if text == "/help" or text == "📋 Команды":
@@ -135,12 +119,7 @@ def handle_message(event):
         user_id_str = str(user_id)
         if user_id_str in stats:
             data = stats[user_id_str]
-            send_message(user_id,
-                f"📊 *Твоя статистика:*\n\n"
-                f"💬 Сообщений: {data['messages']}\n"
-                f"📅 Первое обращение: {data['first_seen']}\n"
-                f"🕐 Последнее: {data['last_seen']}"
-            )
+            send_message(user_id, f"📊 *Твоя статистика:*\n\n💬 Сообщений: {data['messages']}\n📅 Первое обращение: {data['first_seen']}\n🕐 Последнее: {data['last_seen']}")
         else:
             send_message(user_id, "📊 У тебя пока нет сообщений.")
         return
@@ -150,11 +129,7 @@ def handle_message(event):
             stats = load_stats()
             total_users = len(stats)
             total_messages = sum(u["messages"] for u in stats.values())
-            send_message(user_id,
-                f"📊 *Общая статистика:*\n\n"
-                f"👥 Всего пользователей: {total_users}\n"
-                f"💬 Всего сообщений: {total_messages}"
-            )
+            send_message(user_id, f"📊 *Общая статистика:*\n\n👥 Всего пользователей: {total_users}\n💬 Всего сообщений: {total_messages}")
         else:
             send_message(user_id, "⛔ У тебя нет прав для этой команды.")
         return
@@ -168,18 +143,18 @@ def handle_message(event):
         return
 
     if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Поиск: SearXNG\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн")
+        send_message(user_id, f"🤖 Ботаник\n📌 Поиск: SearXNG\n📌 Модель: {config.OPENAI_MODEL}")
         return
 
     # === ПОИСК В ИНТЕРНЕТЕ ===
     send_message(user_id, "🔍 Ищу в интернете...")
-    result = search_web(text)
+    result = search_searxng(text)
 
     if result:
         send_message(user_id, result)
         return
 
-    # === ЕСЛИ ПОИСК НЕ НАШЁЛ — AI ===
+    # === ЕСЛИ НЕ НАШЁЛ — AI ===
     try:
         response = client.chat.completions.create(
             model=config.OPENAI_MODEL,
@@ -187,15 +162,13 @@ def handle_message(event):
             temperature=0.7,
             max_tokens=500,
         )
-        answer = response.choices[0].message.content
-        send_message(user_id, f"💡 {answer}")
+        send_message(user_id, f"💡 {response.choices[0].message.content}")
     except Exception as e:
         print(f"❌ Ошибка AI: {e}")
-        send_message(user_id, "⚠️ Не удалось найти информацию. Попробуй позже.")
+        send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
-    print(f"📌 Админ ID: {ADMIN_ID}")
     print("⏳ Ожидаю сообщения...")
 
     try:
