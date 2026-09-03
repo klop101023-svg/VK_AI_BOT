@@ -8,6 +8,7 @@ import json
 import os
 from datetime import datetime
 import openai
+import xml.etree.ElementTree as ET
 
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
@@ -72,29 +73,37 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def search_searxng(query):
-    """Ищет через SearXNG — пробует несколько инстансов"""
-    instances = [
-        "https://searx.space/search",
-        "https://search.gresmash.com/search",
-        "https://searx.nd.ax/search",
-        "https://searx.be/search"
-    ]
-    
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    
-    for url in instances:
-        try:
-            params = {"q": query, "format": "json", "categories": "general", "language": "ru"}
-            response = requests.get(url, params=params, headers=headers, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("results"):
-                    result = data["results"][0]
-                    return f"🔍 {result.get('title', '')}\n{result.get('snippet', '')}\n🔗 {result.get('url', '')}"
-        except:
-            continue
-    return None
+def search_yandex(query):
+    try:
+        api_key = os.getenv("YANDEX_API_KEY")
+        folder_id = os.getenv("YANDEX_FOLDER_ID")
+        if not api_key or not folder_id:
+            print("❌ YANDEX_API_KEY или FOLDER_ID не заданы")
+            return None
+        
+        url = "https://yandex.ru/search/xml"
+        params = {
+            "folderid": folder_id,
+            "apikey": api_key,
+            "query": query,
+            "l10n": "ru",
+            "sortby": "rlv",
+            "maxpassages": 1,
+            "page": 0
+        }
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code != 200:
+            print(f"❌ Ошибка Яндекс: {response.status_code}")
+            return None
+        
+        root = ET.fromstring(response.text)
+        passage = root.find(".//passage")
+        if passage is not None:
+            return passage.text
+        return None
+    except Exception as e:
+        print(f"❌ Ошибка Яндекса: {e}")
+        return None
 
 def handle_message(event):
     user_id = event.object.message['from_id']
@@ -107,7 +116,7 @@ def handle_message(event):
     update_stats(user_id)
 
     if text == "/start" or text == "🌿 Главная":
-        send_message(user_id, "🌿 Привет! Я Ботаник.\n\n🔍 Задай любой вопрос — я поищу в интернете.\n💰 Спроси курс доллара\n🌤️ Узнай погоду")
+        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, я поищу в Яндексе.")
         return
 
     if text == "/help" or text == "📋 Команды":
@@ -119,7 +128,12 @@ def handle_message(event):
         user_id_str = str(user_id)
         if user_id_str in stats:
             data = stats[user_id_str]
-            send_message(user_id, f"📊 *Твоя статистика:*\n\n💬 Сообщений: {data['messages']}\n📅 Первое обращение: {data['first_seen']}\n🕐 Последнее: {data['last_seen']}")
+            send_message(user_id,
+                f"📊 *Твоя статистика:*\n\n"
+                f"💬 Сообщений: {data['messages']}\n"
+                f"📅 Первое обращение: {data['first_seen']}\n"
+                f"🕐 Последнее: {data['last_seen']}"
+            )
         else:
             send_message(user_id, "📊 У тебя пока нет сообщений.")
         return
@@ -129,7 +143,11 @@ def handle_message(event):
             stats = load_stats()
             total_users = len(stats)
             total_messages = sum(u["messages"] for u in stats.values())
-            send_message(user_id, f"📊 *Общая статистика:*\n\n👥 Всего пользователей: {total_users}\n💬 Всего сообщений: {total_messages}")
+            send_message(user_id,
+                f"📊 *Общая статистика:*\n\n"
+                f"👥 Всего пользователей: {total_users}\n"
+                f"💬 Всего сообщений: {total_messages}"
+            )
         else:
             send_message(user_id, "⛔ У тебя нет прав для этой команды.")
         return
@@ -143,15 +161,15 @@ def handle_message(event):
         return
 
     if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Поиск: SearXNG\n📌 Модель: {config.OPENAI_MODEL}")
+        send_message(user_id, f"🤖 Ботаник\n📌 Поиск: Яндекс\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн")
         return
 
-    # === ПОИСК В ИНТЕРНЕТЕ ===
-    send_message(user_id, "🔍 Ищу в интернете...")
-    result = search_searxng(text)
+    # === ПОИСК В ЯНДЕКСЕ ===
+    send_message(user_id, "🔍 Ищу в Яндексе...")
+    result = search_yandex(text)
 
     if result:
-        send_message(user_id, result)
+        send_message(user_id, f"🔍 {result}")
         return
 
     # === ЕСЛИ НЕ НАШЁЛ — AI ===
@@ -162,13 +180,15 @@ def handle_message(event):
             temperature=0.7,
             max_tokens=500,
         )
-        send_message(user_id, f"💡 {response.choices[0].message.content}")
+        answer = response.choices[0].message.content
+        send_message(user_id, f"💡 {answer}")
     except Exception as e:
         print(f"❌ Ошибка AI: {e}")
         send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
+    print(f"📌 Админ ID: {ADMIN_ID}")
     print("⏳ Ожидаю сообщения...")
 
     try:
