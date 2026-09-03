@@ -72,6 +72,22 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
+def search_searxng(query):
+    try:
+        url = "https://searx.be/search"
+        params = {"q": query, "format": "json", "categories": "general"}
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        data = response.json()
+        
+        if data.get("results"):
+            result = data["results"][0]
+            return f"{result.get('title', '')}\n{result.get('snippet', '')}\n🔗 {result.get('url', '')}"
+        return None
+    except Exception as e:
+        print(f"❌ Ошибка SearXNG: {e}")
+        return None
+
 def handle_message(event):
     user_id = event.object.message['from_id']
     text = event.object.message.get('text', '')
@@ -83,7 +99,7 @@ def handle_message(event):
     update_stats(user_id)
 
     if text == "/start" or text == "🌿 Главная":
-        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос.")
+        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, я поищу в интернете через SearXNG.")
         return
 
     if text == "/help" or text == "📋 Команды":
@@ -128,10 +144,16 @@ def handle_message(event):
         return
 
     if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн")
+        send_message(user_id, f"🤖 Ботаник\n📌 Модель: {config.OPENAI_MODEL}\n📌 Поиск: SearXNG")
         return
 
-    # === ОТВЕТ ЧЕРЕЗ AI ===
+    send_message(user_id, "🔍 Ищу через SearXNG...")
+    result = search_searxng(text)
+
+    if result:
+        send_message(user_id, f"🔍 {result}")
+        return
+
     try:
         response = client.chat.completions.create(
             model=config.OPENAI_MODEL,
@@ -143,7 +165,7 @@ def handle_message(event):
         send_message(user_id, answer)
     except Exception as e:
         print(f"❌ Ошибка AI: {e}")
-        send_message(user_id, "⚠️ Произошла ошибка. Попробуй позже.")
+        send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
