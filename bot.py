@@ -8,6 +8,7 @@ import json
 import os
 from datetime import datetime
 import openai
+import xml.etree.ElementTree as ET
 
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
@@ -72,20 +73,36 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def search_searxng(query):
+def search_yandex(query):
     try:
-        url = "https://searx.be/search"
-        params = {"q": query, "format": "json", "categories": "general"}
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        data = response.json()
+        api_key = os.getenv("YANDEX_API_KEY")
+        folder_id = os.getenv("YANDEX_FOLDER_ID")
+        if not api_key or not folder_id:
+            print("❌ YANDEX_API_KEY или FOLDER_ID не заданы")
+            return None
         
-        if data.get("results"):
-            result = data["results"][0]
-            return f"{result.get('title', '')}\n{result.get('snippet', '')}\n🔗 {result.get('url', '')}"
+        url = "https://yandex.ru/search/xml"
+        params = {
+            "folderid": folder_id,
+            "apikey": api_key,
+            "query": query,
+            "l10n": "ru",
+            "sortby": "rlv",
+            "maxpassages": 1,
+            "page": 0
+        }
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code != 200:
+            print(f"❌ Ошибка Яндекс: {response.status_code}")
+            return None
+        
+        root = ET.fromstring(response.text)
+        passage = root.find(".//passage")
+        if passage is not None:
+            return passage.text
         return None
     except Exception as e:
-        print(f"❌ Ошибка SearXNG: {e}")
+        print(f"❌ Ошибка Яндекса: {e}")
         return None
 
 def handle_message(event):
@@ -99,7 +116,7 @@ def handle_message(event):
     update_stats(user_id)
 
     if text == "/start" or text == "🌿 Главная":
-        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, я поищу в интернете через SearXNG.")
+        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, я поищу в Яндексе.")
         return
 
     if text == "/help" or text == "📋 Команды":
@@ -144,11 +161,11 @@ def handle_message(event):
         return
 
     if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Модель: {config.OPENAI_MODEL}\n📌 Поиск: SearXNG")
+        send_message(user_id, f"🤖 Ботаник\n📌 Поиск: Яндекс\n📌 Статус: онлайн")
         return
 
-    send_message(user_id, "🔍 Ищу через SearXNG...")
-    result = search_searxng(text)
+    send_message(user_id, "🔍 Ищу в Яндексе...")
+    result = search_yandex(text)
 
     if result:
         send_message(user_id, f"🔍 {result}")
