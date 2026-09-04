@@ -72,31 +72,46 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def search_duckduckgo(query):
-    """Поиск через DuckDuckGo API"""
+def search_searxng(query):
+    """Поиск через публичный SearXNG"""
     try:
-        url = "https://api.duckduckgo.com/"
-        params = {
-            "q": query,
-            "format": "json",
-            "no_html": 1,
-            "skip_disambig": 1
-        }
-        response = requests.get(url, params=params, timeout=10)
-        data = response.json()
-        
-        if data.get("AbstractText"):
-            return data["AbstractText"]
-        
-        if data.get("RelatedTopics"):
-            for topic in data["RelatedTopics"]:
-                if "Text" in topic:
-                    return topic["Text"]
-        
+        url = "https://searx.space/search"
+        params = {"q": query, "format": "json", "categories": "general", "language": "ru"}
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("results"):
+                result = data["results"][0]
+                title = result.get("title", "Без названия")
+                snippet = result.get("snippet", "Нет описания")
+                link = result.get("url", "#")
+                return f"🔍 {title}\n{snippet}\n🔗 {link}"
         return None
     except Exception as e:
-        print(f"❌ Ошибка DuckDuckGo: {e}")
+        print(f"❌ Ошибка SearXNG: {e}")
         return None
+
+def get_usd_rate():
+    try:
+        url = "https://www.cbr-xml-daily.ru/daily_json.js"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        if data and "Valute" in data and "USD" in data["Valute"]:
+            return f"Курс доллара США: {data['Valute']['USD']['Value']:.2f} рублей"
+    except:
+        pass
+    return None
+
+def get_weather(city="Москва"):
+    try:
+        url = f"https://wttr.in/{city}?format=%C+%t+%w&lang=ru"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            return f"Погода в {city}: {response.text.strip()}"
+    except:
+        pass
+    return None
 
 def handle_message(event):
     user_id = event.object.message['from_id']
@@ -109,11 +124,11 @@ def handle_message(event):
     update_stats(user_id)
 
     if text == "/start" or text == "🌿 Главная":
-        send_message(user_id, "🌿 Привет! Я Ботаник — твой AI-помощник.\n\n"
-                              "🔍 Я ищу ответы в интернете через DuckDuckGo\n"
+        send_message(user_id, "🌿 Привет! Я Ботаник.\n\n"
                               "💰 Спроси курс доллара\n"
                               "🌤️ Узнай погоду\n"
-                              "❓ Задай любой вопрос!")
+                              "🔍 Я ищу в интернете через SearXNG\n"
+                              "💬 Или просто поговори со мной")
         return
 
     if text == "/help" or text == "📋 Команды":
@@ -150,7 +165,7 @@ def handle_message(event):
         return
 
     if text == "/clear" or text == "🧹 Очистить":
-        send_message(user_id, "🧹 История диалога очищена.")
+        send_message(user_id, "🧹 История очищена.")
         return
 
     if text == "/rules" or text == "📜 Правила":
@@ -158,18 +173,42 @@ def handle_message(event):
         return
 
     if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Поиск: DuckDuckGo\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн")
+        send_message(user_id, f"🤖 Ботаник\n📌 Поиск: SearXNG\n📌 Модель: {config.OPENAI_MODEL}")
         return
 
-    # === ПОИСК В ИНТЕРНЕТЕ ===
-    send_message(user_id, "🔍 Ищу в интернете через DuckDuckGo...")
-    result = search_duckduckgo(text)
+    lower_text = text.lower()
+
+    if "курс" in lower_text and "доллар" in lower_text:
+        rate = get_usd_rate()
+        if rate:
+            send_message(user_id, f"💰 {rate}")
+            return
+        else:
+            send_message(user_id, "⚠️ Не удалось получить курс.")
+            return
+
+    if "погод" in lower_text:
+        city = "Москва"
+        words = text.split()
+        for word in words:
+            if word.istitle() and len(word) > 2 and word not in ["Погода", "Какая"]:
+                city = word
+                break
+        weather = get_weather(city)
+        if weather:
+            send_message(user_id, f"🌤️ {weather}")
+            return
+        else:
+            send_message(user_id, f"⚠️ Не удалось получить погоду.")
+            return
+
+    send_message(user_id, "🔍 Ищу в интернете...")
+    result = search_searxng(text)
 
     if result:
-        send_message(user_id, f"🔍 {result}")
+        send_message(user_id, result)
         return
 
-    # === ЕСЛИ НЕ НАШЁЛ — AI ===
     try:
         response = client.chat.completions.create(
             model=config.OPENAI_MODEL,
@@ -177,10 +216,9 @@ def handle_message(event):
             temperature=0.7,
             max_tokens=500,
         )
-        answer = response.choices[0].message.content
-        send_message(user_id, f"💡 {answer}")
+        send_message(user_id, response.choices[0].message.content)
     except Exception as e:
-        print(f"❌ Ошибка AI: {e}")
+        print(f"❌ Ошибка: {e}")
         send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
 
 def main():
