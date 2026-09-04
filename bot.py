@@ -8,6 +8,7 @@ import json
 import os
 from datetime import datetime
 from gigachat import GigaChat
+from gigachat.models import Chat, Messages, MessagesRole
 
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
@@ -81,13 +82,11 @@ def send_message(user_id, text, keyboard=None):
         print(f"❌ Ошибка: {e}")
 
 def ask_gigachat(text):
-    """Отправляет запрос в GigaChat с включённым интернетом"""
+    """Отправляет запрос в GigaChat"""
     if client is None:
         return "❌ GigaChat не подключён"
     
     try:
-        from gigachat.models import Chat, Messages, MessagesRole
-        
         messages = [
             Messages(role=MessagesRole.USER, content=text)
         ]
@@ -95,7 +94,6 @@ def ask_gigachat(text):
         chat = Chat(
             model="GigaChat-3-Ultra",
             messages=messages,
-            tools=[{"type": "web_search"}]
         )
         
         response = client.chat(chat)
@@ -116,7 +114,7 @@ def handle_message(event):
 
     if text == "/start" or text == "🌿 Главная":
         send_message(user_id, "🌿 Привет! Я Ботаник.\n\n"
-                              "💬 Я отвечаю через GigaChat с интернетом\n"
+                              "💬 Я отвечаю через GigaChat\n"
                               "💰 Спроси курс доллара\n"
                               "🌤️ Узнай погоду\n"
                               "❓ Задай любой вопрос!")
@@ -164,11 +162,11 @@ def handle_message(event):
         return
 
     if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Модель: GigaChat-3-Ultra\n📌 Интернет: включён")
+        send_message(user_id, f"🤖 Ботаник\n📌 Модель: GigaChat-3-Ultra")
         return
 
     # === ОТВЕТ ЧЕРЕЗ GIGACHAT ===
-    send_message(user_id, "🤔 Думаю... (GigaChat с интернетом)")
+    send_message(user_id, "🤔 Думаю...")
     answer = ask_gigachat(text)
     
     if answer:
@@ -179,7 +177,7 @@ def handle_message(event):
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
     print(f"📌 Админ ID: {ADMIN_ID}")
-    print("📌 Модель: GigaChat-3-Ultra (с интернетом)")
+    print("📌 Модель: GigaChat-3-Ultra")
     print("⏳ Ожидаю сообщения...")
 
     try:
