@@ -8,7 +8,6 @@ import json
 import os
 from datetime import datetime
 import openai
-import xml.etree.ElementTree as ET
 
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
@@ -73,36 +72,30 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def search_yandex(query):
+def search_duckduckgo(query):
+    """Поиск через DuckDuckGo API"""
     try:
-        api_key = os.getenv("YANDEX_API_KEY")
-        folder_id = os.getenv("YANDEX_FOLDER_ID")
-        if not api_key or not folder_id:
-            print("❌ YANDEX_API_KEY или FOLDER_ID не заданы")
-            return None
-        
-        url = "https://yandex.ru/search/xml"
+        url = "https://api.duckduckgo.com/"
         params = {
-            "folderid": folder_id,
-            "apikey": api_key,
-            "query": query,
-            "l10n": "ru",
-            "sortby": "rlv",
-            "maxpassages": 1,
-            "page": 0
+            "q": query,
+            "format": "json",
+            "no_html": 1,
+            "skip_disambig": 1
         }
         response = requests.get(url, params=params, timeout=10)
-        if response.status_code != 200:
-            print(f"❌ Ошибка Яндекс: {response.status_code}")
-            return None
+        data = response.json()
         
-        root = ET.fromstring(response.text)
-        passage = root.find(".//passage")
-        if passage is not None:
-            return passage.text
+        if data.get("AbstractText"):
+            return data["AbstractText"]
+        
+        if data.get("RelatedTopics"):
+            for topic in data["RelatedTopics"]:
+                if "Text" in topic:
+                    return topic["Text"]
+        
         return None
     except Exception as e:
-        print(f"❌ Ошибка Яндекса: {e}")
+        print(f"❌ Ошибка DuckDuckGo: {e}")
         return None
 
 def handle_message(event):
@@ -116,7 +109,11 @@ def handle_message(event):
     update_stats(user_id)
 
     if text == "/start" or text == "🌿 Главная":
-        send_message(user_id, "🌿 Привет! Я Ботаник. Задай любой вопрос, я поищу в Яндексе.")
+        send_message(user_id, "🌿 Привет! Я Ботаник — твой AI-помощник.\n\n"
+                              "🔍 Я ищу ответы в интернете через DuckDuckGo\n"
+                              "💰 Спроси курс доллара\n"
+                              "🌤️ Узнай погоду\n"
+                              "❓ Задай любой вопрос!")
         return
 
     if text == "/help" or text == "📋 Команды":
@@ -153,7 +150,7 @@ def handle_message(event):
         return
 
     if text == "/clear" or text == "🧹 Очистить":
-        send_message(user_id, "🧹 История очищена.")
+        send_message(user_id, "🧹 История диалога очищена.")
         return
 
     if text == "/rules" or text == "📜 Правила":
@@ -161,12 +158,12 @@ def handle_message(event):
         return
 
     if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Поиск: Яндекс\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн")
+        send_message(user_id, f"🤖 Ботаник\n📌 Поиск: DuckDuckGo\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн")
         return
 
-    # === ПОИСК В ЯНДЕКСЕ ===
-    send_message(user_id, "🔍 Ищу в Яндексе...")
-    result = search_yandex(text)
+    # === ПОИСК В ИНТЕРНЕТЕ ===
+    send_message(user_id, "🔍 Ищу в интернете через DuckDuckGo...")
+    result = search_duckduckgo(text)
 
     if result:
         send_message(user_id, f"🔍 {result}")
