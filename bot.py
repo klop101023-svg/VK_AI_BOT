@@ -17,9 +17,12 @@ ADMIN_ID = 1027228715
 
 GIGACHAT_API_KEY = config.GIGACHAT_API_KEY
 GIGACHAT_MODEL = "GigaChat-3-Ultra"
-GIGACHAT_URL = "https://developers.sber.ru/api/gigachat/v1/chat/completions"  # Актуальный адрес!
-
+GIGACHAT_URL = "https://developers.sber.ru/api/gigachat/v1/chat/completions"
 STATS_FILE = "/data/stats.json"
+
+# ⚠️ ВАЖНО: Переместил сюда, чтобы сессия создавалась сразу
+vk_session = vk_api.VkApi(token=VK_TOKEN)
+vk = vk_session.get_api()
 
 
 # === ПОДКЛЮЧЕНИЕ К GIGACHAT (прямой HTTP-запрос) ===
@@ -28,6 +31,7 @@ def ask_gigachat(text):
     """Отправляет текст пользователя напрямую в API GigaChat."""
     payload = {
         "model": GIGACHAT_MODEL,
+        # Исправлено: теперь обычный dict
         "messages": [{"role": "user", "content": text}],
         "available_functions": ["web_search"]  # Без этого не будет актуальных ответов
     }
@@ -43,9 +47,6 @@ def ask_gigachat(text):
             error_data = response.json()
             print(json.dumps(error_data, ensure_ascii=False, indent=2))
             
-            # Типичные ошибки:
-            # - code:401, message:"Unauthorized" → неверный ключ
-            # - detail:"Access denied to the skill 'web_search'" → нет прав на навык
             return "🛑 Не удалось подключиться к GigaChat."
         
         answer = response.json().get("choices")[0].get("message").get("content")
@@ -112,7 +113,7 @@ def handle_message(event):
 
     update_stats(user_id)
 
-    # ❗️ Исправлена команда /admin_stats
+    # Системные команды
     if text == "/start" or text.startswith("🌿"):
         send_message(user_id, "🌿 Привет! Я Ботаник.\n\n💬 Задавайте любые вопросы!")
     elif text == "/help":
@@ -162,7 +163,7 @@ if __name__ == "__main__":
     print(f"📌 Модель: {GIGACHAT_MODEL}")
     print("⏳ Ожидаю сообщения...\n")
 
-    longpoll = VkBotLongPoll(vk_session, group_id=config.GROUP_ID)
+    longpoll = VkBotLongPoll(vk_session, group_id=GROUP_ID)
     for event in longpoll.listen():
         if event.type == VkBotEventType.MESSAGE_NEW and event.from_user:
             handle_message(event)
