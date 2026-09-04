@@ -2,29 +2,17 @@ import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
-import config
+import config  # Импортируем ваши настройки
 import requests
 import json
 import os
 from datetime import datetime
-from gigachat import GigaChat
-from gigachat.models import Chat, Messages, MessagesRole
+
+
+# === ПОДКЛЮЧЕНИЕ VK И НАСТРОЙКИ ===
 
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
-
-# === ПОДКЛЮЧЕНИЕ GIGACHAT ===
-try:
-    client = GigaChat(
-        base_url="https://api.giga.chat/v2",
-        credentials=config.GIGACHAT_API_KEY,
-        scope=config.GIGACHAT_SCOPE,
-        verify_ssl_certs=False,
-    )
-    print("✅ GigaChat подключён")
-except Exception as e:
-    print(f"❌ Ошибка GigaChat: {e}")
-    client = None
 
 STATS_FILE = "/data/stats.json"
 ADMIN_ID = 1027228715
@@ -35,7 +23,7 @@ def load_stats():
     try:
         with open(STATS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except Exception:
         return {}
 
 def save_stats(stats):
@@ -75,104 +63,144 @@ def send_message(user_id, text, keyboard=None):
         vk.messages.send(
             user_id=user_id,
             message=text,
-            keyboard=keyboard if keyboard else get_main_keyboard(),
+            keyboard=keyboard or get_main_keyboard(),
             random_id=get_random_id()
         )
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        print(f"❌ Ошибка отправки сообщения: {e}")
+
+
+# === ПОДКЛЮЧЕНИЕ К GIGACHAT ===
+
+def init_gigachat_client():
+    """Создаёт клиента только один раз"""
+    base_url = "https://developers.sber.ru/api/gigachat/v1/chat/completions"
+    credentials = config.GIGACHAT_API_KEY
+    scope = config.GIGACHAT_SCOPE
+
+    # Проверим наличие ключей
+    if not all([base_url, credentials, scope]):
+        raise ValueError("Не хватает настроек для GigaChat!")
+
+    from gigachat import GigaChat
+    from gigachat.models import Chat, Messages, MessagesRole
+
+    client = GigaChat(base_url=base_url, credentials=credentials, scope=scope)
+    print("✅ GigaChat подключён.")
+    return client
+
+client = None  # Глобальная переменная для хранения клиента
+
+try:
+    client = init_gigachat_client()  # Пробуем создать клиент сразу после импорта
+except Exception as e:
+    print(f"❌ Не удалось подключить GigaChat: {str(e)}")
+
+
+# === ОБРАБОТКА ЗАПРОСА ===
 
 def ask_gigachat(text):
-    """Отправляет запрос в GigaChat"""
+    """
+    Отправляет запрос в GigaChat.
+    Теперь мы передаём доступ к навыку web_search, чтобы бот искал ответы в интернете.
+    """
+    global client  # Используем глобальную переменную
+
     if client is None:
-        return "❌ GigaChat не подключён"
-    
+        return "🛑 GigaChat недоступен."
+
+    messages = [
+        Messages(role=MessagesRole.USER, content=text),
+    ]
+
+    chat = Chat(
+        model="GigaChat-3-Ultra",
+        messages=messages,
+        available_functions=["web_search"],  # <--- ВНИМАНИЕ! Это ключ к актуальным ответам!
+    )
+
     try:
-        messages = [
-            Messages(role=MessagesRole.USER, content=text)
-        ]
-        
-        chat = Chat(
-            model="GigaChat-3-Ultra",
-            messages=messages,
-        )
-        
         response = client.chat(chat)
-        return response.choices[0].message.content
+        answer = response.choices[0].message.content.strip()
+        return answer[:4096]  # Ограничение длины ответа ВК
     except Exception as e:
-        print(f"❌ Ошибка GigaChat: {e}")
+        print(f"❌ Ошибка запроса к GigaChat: {type(e).__name__}: {str(e)}")
         return None
+
+
+# === КОМАНДЫ БОТА ===
 
 def handle_message(event):
     user_id = event.object.message['from_id']
-    text = event.object.message.get('text', '')
-    print(f"📩 от {user_id}: {text}")
+    text = event.object.message.get('text', '').strip()
 
     if not text:
         return
 
-    update_stats(user_id)
+    update_stats(user_id)  # Обновляем статистику
 
-    if text == "/start" or text == "🌿 Главная":
-        send_message(user_id, "🌿 Привет! Я Ботаник.\n\n"
-                              "💬 Я отвечаю через GigaChat\n"
-                              "💰 Спроси курс доллара\n"
-                              "🌤️ Узнай погоду\n"
-                              "❓ Задай любой вопрос!")
+    # Системные команды
+    if text == "/start" or text.startswith("🌿"):
+        send_message(user_id, "🌿 Привет! Я Ботаник.\n\n💬 Я отвечаю через GigaChat\n💰 Спроси курс доллара\n🌤️ Узнай погоду\n❓ Задай любой вопрос!")
         return
 
-    if text == "/help" or text == "📋 Команды":
+    if text == "/help" or text.startswith("📋"):
         send_message(user_id, "📋 Команды:\n/start — приветствие\n/stats — твоя статистика\n/clear — очистить историю\n/rules — правила\n/info — информация")
         return
 
-    if text == "/stats" or text == "📊 Статистика":
+    if text == "/stats" or text.startswith("📊"):
         stats = load_stats()
         user_id_str = str(user_id)
-        if user_id_str in stats:
-            data = stats[user_id_str]
-            send_message(user_id,
-                f"📊 *Твоя статистика:*\n\n"
-                f"💬 Сообщений: {data['messages']}\n"
-                f"📅 Первое обращение: {data['first_seen']}\n"
-                f"🕐 Последнее: {data['last_seen']}"
-            )
-        else:
-            send_message(user_id, "📊 У тебя пока нет сообщений.")
+        data = stats.get(user_id_str, {})
+        msg = (
+            f"📊 *Твоя статистика:*\n\n"
+            f"💬 Сообщений: {data.get('messages', 0)}\n"
+            f"📅 Первое обращение: {data.get('first_seen', '—')}\n"
+            f"🕐 Последнее: {data.get('last_seen', '—')}"
+        )
+        send_message(user_id, msg)
         return
 
     if text == "/admin_stats":
-        if user_id == ADMIN_ID:
-            stats = load_stats()
-            total_users = len(stats)
-            total_messages = sum(u["messages"] for u in stats.values())
-            send_message(user_id,
-                f"📊 *Общая статистика:*\n\n"
-                f"👥 Всего пользователей: {total_users}\n"
-                f"💬 Всего сообщений: {total_messages}"
-            )
-        else:
+        if user_id != ADMIN_ID:
             send_message(user_id, "⛔ У тебя нет прав для этой команды.")
+            return
+
+        stats = load_stats()
+        total_users = len(stats)
+        total_messages = sum(u["messages"] for u in stats.values())
+        
+        msg = (
+            f"📊 *Общая статистика:*\n\n"
+            f"👥 Всего пользователей: {total_users}\n"
+            f"💬 Всего сообщений: {total_messages}"
+        )
+        send_message(user_id, msg)
         return
 
-    if text == "/clear" or text == "🧹 Очистить":
-        send_message(user_id, "🧹 История очищена.")
+    if text == "/clear" or text.startswith("🧹"):
+        send_message(user_id, "🧹 История очищена.")  # На самом деле история не хранится, так что это просто заглушка
         return
 
-    if text == "/rules" or text == "📜 Правила":
+    if text == "/rules" or text.startswith("📜"):
         send_message(user_id, "📜 Правила:\n1. Будь вежлив\n2. Не спамь\n3. Бот не хранит переписку")
         return
 
-    if text == "/info" or text == "ℹ️ Инфо":
+    if text == "/info" or text.startswith("ℹ️"):
         send_message(user_id, f"🤖 Ботаник\n📌 Модель: GigaChat-3-Ultra")
         return
 
-    # === ОТВЕТ ЧЕРЕЗ GIGACHAT ===
+    # Основной функционал — отправка вопроса в GigaChat
     send_message(user_id, "🤔 Думаю...")
     answer = ask_gigachat(text)
-    
+
     if answer:
         send_message(user_id, answer)
     else:
-        send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
+        send_message(user_id, "🛑 Что-то пошло не так. Попробуй позже.")
+
+
+# === ЛОНГПОЛЛ ===
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
@@ -180,13 +208,10 @@ def main():
     print("📌 Модель: GigaChat-3-Ultra")
     print("⏳ Ожидаю сообщения...")
 
-    try:
-        longpoll = VkBotLongPoll(vk_session, config.GROUP_ID)
-        for event in longpoll.listen():
-            if event.type == VkBotEventType.MESSAGE_NEW:
-                handle_message(event)
-    except Exception as e:
-        print(f"❌ Ошибка: {e}")
+    longpoll = VkBotLongPoll(vk_session, group_id=config.GROUP_ID)
+    for event in longpoll.listen():
+        if event.type == VkBotEventType.MESSAGE_NEW and event.from_user:
+            handle_message(event)
 
 if __name__ == "__main__":
     main()
