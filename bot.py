@@ -13,12 +13,17 @@ vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
 
 # === ПОДКЛЮЧЕНИЕ GIGACHAT ===
-client = GigaChat(
-    base_url="https://api.giga.chat/v2",
-    credentials=config.GIGACHAT_API_KEY,
-    scope=config.GIGACHAT_SCOPE,
-    verify_ssl_certs=False,
-)
+try:
+    client = GigaChat(
+        base_url="https://api.giga.chat/v2",
+        credentials=config.GIGACHAT_API_KEY,
+        scope=config.GIGACHAT_SCOPE,
+        verify_ssl_certs=False,
+    )
+    print("✅ GigaChat подключён")
+except Exception as e:
+    print(f"❌ Ошибка GigaChat: {e}")
+    client = None
 
 STATS_FILE = "/data/stats.json"
 ADMIN_ID = 1027228715
@@ -75,29 +80,11 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def get_usd_rate():
-    try:
-        url = "https://www.cbr-xml-daily.ru/daily_json.js"
-        response = requests.get(url, timeout=5)
-        data = response.json()
-        if data and "Valute" in data and "USD" in data["Valute"]:
-            return f"Курс доллара США: {data['Valute']['USD']['Value']:.2f} рублей"
-    except:
-        pass
-    return None
-
-def get_weather(city="Москва"):
-    try:
-        url = f"https://wttr.in/{city}?format=%C+%t+%w&lang=ru"
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            return f"Погода в {city}: {response.text.strip()}"
-    except:
-        pass
-    return None
-
-def ask_gigachat(user_id, text):
+def ask_gigachat(text):
     """Отправляет запрос в GigaChat с включённым интернетом"""
+    if client is None:
+        return "❌ GigaChat не подключён"
+    
     try:
         from gigachat.models import Chat, Messages, MessagesRole
         
@@ -108,7 +95,7 @@ def ask_gigachat(user_id, text):
         chat = Chat(
             model="GigaChat-3-Ultra",
             messages=messages,
-            tools=[{"type": "web_search"}]  # ВКЛЮЧАЕМ ИНТЕРНЕТ
+            tools=[{"type": "web_search"}]
         )
         
         response = client.chat(chat)
@@ -132,7 +119,7 @@ def handle_message(event):
                               "💬 Я отвечаю через GigaChat с интернетом\n"
                               "💰 Спроси курс доллара\n"
                               "🌤️ Узнай погоду\n"
-                              "❓ Задай любой вопрос — я найду ответ!")
+                              "❓ Задай любой вопрос!")
         return
 
     if text == "/help" or text == "📋 Команды":
@@ -180,34 +167,9 @@ def handle_message(event):
         send_message(user_id, f"🤖 Ботаник\n📌 Модель: GigaChat-3-Ultra\n📌 Интернет: включён")
         return
 
-    lower_text = text.lower()
-
-    if "курс" in lower_text and "доллар" in lower_text:
-        rate = get_usd_rate()
-        if rate:
-            send_message(user_id, f"💰 {rate}")
-            return
-        else:
-            send_message(user_id, "⚠️ Не удалось получить курс.")
-            return
-
-    if "погод" in lower_text:
-        city = "Москва"
-        words = text.split()
-        for word in words:
-            if word.istitle() and len(word) > 2 and word not in ["Погода", "Какая"]:
-                city = word
-                break
-        weather = get_weather(city)
-        if weather:
-            send_message(user_id, f"🌤️ {weather}")
-            return
-        else:
-            send_message(user_id, f"⚠️ Не удалось получить погоду.")
-            return
-
+    # === ОТВЕТ ЧЕРЕЗ GIGACHAT ===
     send_message(user_id, "🤔 Думаю... (GigaChat с интернетом)")
-    answer = ask_gigachat(user_id, text)
+    answer = ask_gigachat(text)
     
     if answer:
         send_message(user_id, answer)
