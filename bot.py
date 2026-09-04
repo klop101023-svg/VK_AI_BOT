@@ -7,14 +7,17 @@ import requests
 import json
 import os
 from datetime import datetime
-import openai
+from gigachat import GigaChat
 
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
 
-client = openai.OpenAI(
-    api_key=config.OPENAI_API_KEY,
-    base_url=config.OPENAI_BASE_URL,
+# === ПОДКЛЮЧЕНИЕ GIGACHAT ===
+client = GigaChat(
+    base_url="https://api.giga.chat/v2",
+    credentials=config.GIGACHAT_API_KEY,
+    scope=config.GIGACHAT_SCOPE,
+    verify_ssl_certs=False,
 )
 
 STATS_FILE = "/data/stats.json"
@@ -72,26 +75,6 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def search_searxng(query):
-    """Поиск через публичный SearXNG"""
-    try:
-        url = "https://searx.space/search"
-        params = {"q": query, "format": "json", "categories": "general", "language": "ru"}
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("results"):
-                result = data["results"][0]
-                title = result.get("title", "Без названия")
-                snippet = result.get("snippet", "Нет описания")
-                link = result.get("url", "#")
-                return f"🔍 {title}\n{snippet}\n🔗 {link}"
-        return None
-    except Exception as e:
-        print(f"❌ Ошибка SearXNG: {e}")
-        return None
-
 def get_usd_rate():
     try:
         url = "https://www.cbr-xml-daily.ru/daily_json.js"
@@ -113,6 +96,27 @@ def get_weather(city="Москва"):
         pass
     return None
 
+def ask_gigachat(user_id, text):
+    """Отправляет запрос в GigaChat с включённым интернетом"""
+    try:
+        from gigachat.models import Chat, Messages, MessagesRole
+        
+        messages = [
+            Messages(role=MessagesRole.USER, content=text)
+        ]
+        
+        chat = Chat(
+            model="GigaChat-3-Ultra",
+            messages=messages,
+            tools=[{"type": "web_search"}]  # ВКЛЮЧАЕМ ИНТЕРНЕТ
+        )
+        
+        response = client.chat(chat)
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"❌ Ошибка GigaChat: {e}")
+        return None
+
 def handle_message(event):
     user_id = event.object.message['from_id']
     text = event.object.message.get('text', '')
@@ -125,10 +129,10 @@ def handle_message(event):
 
     if text == "/start" or text == "🌿 Главная":
         send_message(user_id, "🌿 Привет! Я Ботаник.\n\n"
+                              "💬 Я отвечаю через GigaChat с интернетом\n"
                               "💰 Спроси курс доллара\n"
                               "🌤️ Узнай погоду\n"
-                              "🔍 Я ищу в интернете через SearXNG\n"
-                              "💬 Или просто поговори со мной")
+                              "❓ Задай любой вопрос — я найду ответ!")
         return
 
     if text == "/help" or text == "📋 Команды":
@@ -173,7 +177,7 @@ def handle_message(event):
         return
 
     if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Поиск: SearXNG\n📌 Модель: {config.OPENAI_MODEL}")
+        send_message(user_id, f"🤖 Ботаник\n📌 Модель: GigaChat-3-Ultra\n📌 Интернет: включён")
         return
 
     lower_text = text.lower()
@@ -202,28 +206,18 @@ def handle_message(event):
             send_message(user_id, f"⚠️ Не удалось получить погоду.")
             return
 
-    send_message(user_id, "🔍 Ищу в интернете...")
-    result = search_searxng(text)
-
-    if result:
-        send_message(user_id, result)
-        return
-
-    try:
-        response = client.chat.completions.create(
-            model=config.OPENAI_MODEL,
-            messages=[{"role": "user", "content": text}],
-            temperature=0.7,
-            max_tokens=500,
-        )
-        send_message(user_id, response.choices[0].message.content)
-    except Exception as e:
-        print(f"❌ Ошибка: {e}")
+    send_message(user_id, "🤔 Думаю... (GigaChat с интернетом)")
+    answer = ask_gigachat(user_id, text)
+    
+    if answer:
+        send_message(user_id, answer)
+    else:
         send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
 
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
     print(f"📌 Админ ID: {ADMIN_ID}")
+    print("📌 Модель: GigaChat-3-Ultra (с интернетом)")
     print("⏳ Ожидаю сообщения...")
 
     try:
