@@ -11,6 +11,7 @@ from datetime import datetime
 
 # === НАСТРОЙКИ БОТА ===
 
+global vk_session
 VK_TOKEN = config.VK_TOKEN
 GROUP_ID = config.GROUP_ID
 ADMIN_ID = 1027228715
