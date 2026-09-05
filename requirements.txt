@@ -1,5 +1,6 @@
 vk_api
 python-dotenv
 requests
-openai
-gigachat
+vk-api>=15.0
+requests>=2.31.0
+python-dotenv 
