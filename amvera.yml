@@ -9,6 +9,6 @@ environments:
     requirements:
       path: requirements.txt
     app:
-      command: python bot.py
+      command: python -m bot
       port: 80
       persistenceMount: /data
