@@ -4,7 +4,7 @@ project:
 # Это обязательный раздел!
 meta:
   icon: "🤖"
-  color: "#007bff"   # Синий цвет
+  color: "#007bff" # Синий цвет
   tags: [python, vk_api]
 
 environments:
@@ -12,4 +12,4 @@ environments:
   python: "3.11"
   requirements:
     path: requirements.txt
-  app: python -m bot  # Команда запуска осталась прежней
+  app: python -m bot # Команда запуска осталась прежней
