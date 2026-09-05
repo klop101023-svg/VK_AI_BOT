@@ -1,14 +1,15 @@
 project:
-  name: botanik
   description: Бот для ВКонтакте с поиском и статистикой
 
+# Это новая секция meta
+meta:
+  icon: "🤖"
+  color: "#007bff"   # Синий цвет
+  tags: [python, vk_api]
+
 environments:
-  - name: production
-    python:
-      version: 3.11
-    requirements:
-      path: requirements.txt
-    app:
-      command: python -m bot
-      port: 80
-      persistenceMount: /data
+- name: production
+  python: "3.11"
+  requirements:
+    path: requirements.txt
+  app: python -m bot  # Команда запуска осталась прежней
