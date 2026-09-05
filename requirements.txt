@@ -1,6 +1,4 @@
-vk_api
+
+vk-api>=15.0 # С дефисом!
 python-dotenv
 requests
-vk-api>=15.0
-requests>=2.31.0
-python-dotenv>=0.21.1
