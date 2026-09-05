@@ -11,7 +11,6 @@ from datetime import datetime
 
 # === НАСТРОЙКИ БОТА ===
 
-global vk_session
 VK_TOKEN = config.VK_TOKEN
 GROUP_ID = config.GROUP_ID
 ADMIN_ID = 1027228715
@@ -21,7 +20,7 @@ GIGACHAT_MODEL = "GigaChat-3-Ultra"
 GIGACHAT_URL = "https://developers.sber.ru/api/gigachat/v1/chat/completions"
 STATS_FILE = "/data/stats.json"
 
-# ⚠️ ВАЖНО: Переместил сюда, чтобы сессия создавалась сразу
+# ⚠️ ВАЖНО! Перемещаем сюда, чтобы сессия создавалась сразу при импорте модуля
 vk_session = vk_api.VkApi(token=VK_TOKEN)
 vk = vk_session.get_api()
 
@@ -29,30 +28,36 @@ vk = vk_session.get_api()
 # === ПОДКЛЮЧЕНИЕ К GIGACHAT (прямой HTTP-запрос) ===
 
 def ask_gigachat(text):
-    """Отправляет текст пользователя напрямую в API GigaChat."""
+    """Отправляет запрос напрямую в API GigaChat."""
+    
+    if not text.strip():  # Проверяем, что пользователь прислал не пустое сообщение
+        return "🛑 Пустая строка."
+
     payload = {
         "model": GIGACHAT_MODEL,
-        # Исправлено: теперь обычный dict
         "messages": [{"role": "user", "content": text}],
-        "available_functions": ["web_search"]  # Без этого не будет актуальных ответов
+        "available_functions": ["web_search"]  # Без этого не будет актуальных ответов!
     }
-    
+
     headers = {"Authorization": f"Bearer {GIGACHAT_API_KEY}"}
-    
+
     try:
         response = requests.post(GIGACHAT_URL, json=payload, headers=headers)
         
-        # Теперь мы видим РЕАЛЬНУЮ ошибку сервера! 
+        # Теперь мы видим РЕАЛЬНУЮ ошибку сервера!
         if response.status_code != 200:
             print(f"\n❌ Ошибка GigaChat ({response.status_code})")
             error_data = response.json()
             print(json.dumps(error_data, ensure_ascii=False, indent=2))
             
+            # Типичные ошибки:
+            # - code:401, message:"Unauthorized" → неверный ключ
+            # - detail:"Access denied to the skill 'web_search'" → нет прав на навык
             return "🛑 Не удалось подключиться к GigaChat."
         
         answer = response.json().get("choices")[0].get("message").get("content")
-        return answer[:4096]  # Ограничение длины сообщения VK
-    
+        return answer[:4096]  # Ограничение длины ответа ВК
+
     except Exception as e:
         print(f"\n❌ Ошибка запроса: {type(e).__name__}: {e}")
         return None
@@ -129,10 +134,11 @@ def handle_message(event):
             f"🕐 Последнее: {data.get('last_seen', '-')}"
         )
         send_message(user_id, msg)
-    elif text == "/admin_stats":  # Админская статистика
+    elif text == "/admin_stats":  # Исправлена логика админ-команды
         if user_id != ADMIN_ID:
             send_message(user_id, "⛔ У вас нет прав.")
             return
+
         stats = load_stats()
         total_users = len(stats)
         total_messages = sum(u["messages"] for u in stats.values())
@@ -158,13 +164,12 @@ def handle_message(event):
 
 # === ЗАПУСК ЛОНГПОЛЛА ===
 
-if __name__ == "__main__":
-    print(f"✅ Бот запущен. Группа ID: {GROUP_ID}")
-    print(f"📌 Админ ID: {ADMIN_ID}")
-    print(f"📌 Модель: {GIGACHAT_MODEL}")
-    print("⏳ Ожидаю сообщения...\n")
+print(f"✅ Бот запущен. Группа ID: {GROUP_ID}")
+print(f"📌 Админ ID: {ADMIN_ID}")
+print(f"📌 Модель: {GIGACHAT_MODEL}")
+print("⏳ Ожидаю сообщения...\n")
 
-    longpoll = VkBotLongPoll(vk_session, group_id=GROUP_ID)
-    for event in longpoll.listen():
-        if event.type == VkBotEventType.MESSAGE_NEW and event.from_user:
-            handle_message(event)
+longpoll = VkBotLongPoll(vk_session, group_id=config.GROUP_ID)
+for event in longpoll.listen():
+    if event.type == VkBotEventType.MESSAGE_NEW and event.from_user:
+        handle_message(event)
