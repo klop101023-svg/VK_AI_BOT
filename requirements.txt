@@ -3,4 +3,4 @@ python-dotenv
 requests
 vk-api>=15.0
 requests>=2.31.0
-python-dotenv 
+python-dotenv>=0.21.1
