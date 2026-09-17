@@ -9,8 +9,7 @@ COPY . .
 # Устанавливаем зависимости
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Монтируем папку данных для статистики
-VOLUME [ "/data" ]
+
 
 # Указываем команду старта
 CMD ["python", "bot.py"]
