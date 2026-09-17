@@ -1,3 +1,4 @@
-vk_api==11.10.1 # Последняя стабильная версия!
+vk_api
 python-dotenv
 requests
+gigachat
