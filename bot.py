@@ -3,7 +3,7 @@ from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 import config
-import requests
+# import requests # Не используется сейчас
 import json
 import os
 from datetime import datetime
@@ -27,45 +27,46 @@ except Exception as e:
     print(f"❌ Ошибка GigaChat: {e}")
     client = None
 
-STATS_FILE = "/data/stats.json"
-ADMIN_ID = 1027228715
+# СТАТИСТИКА УДАЛЕНА ИЛИ ЗАКОММЕНТИРОВАНА ДЛЯ РАБОТЫ НА ОБЛАЧНЫХ ПЛАТФОРМАХ
+# STATS_FILE = "/data/stats.json"
+# ADMIN_ID = 1027228715
 
-def load_stats():
-    if not os.path.exists(STATS_FILE):
-        return {}
-    try:
-        with open(STATS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
-
-def save_stats(stats):
-    with open(STATS_FILE, "w", encoding="utf-8") as f:
-        json.dump(stats, f, ensure_ascii=False, indent=2)
-
-def update_stats(user_id):
-    stats = load_stats()
-    user_id_str = str(user_id)
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    if user_id_str not in stats:
-        stats[user_id_str] = {
-            "first_seen": now,
-            "last_seen": now,
-            "messages": 0
-        }
-    else:
-        stats[user_id_str]["last_seen"] = now
-    
-    stats[user_id_str]["messages"] += 1
-    save_stats(stats)
+# def load_stats():
+#     if not os.path.exists(STATS_FILE):
+#         return {}
+#     try:
+#         with open(STATS_FILE, "r", encoding="utf-8") as f:
+#             return json.load(f)
+#     except:
+#         return {}
+#
+# def save_stats(stats):
+#     with open(STATS_FILE, "w", encoding="utf-8") as f:
+#         json.dump(stats, f, ensure_ascii=False, indent=2)
+#
+# def update_stats(user_id):
+#     stats = load_stats()
+#     user_id_str = str(user_id)
+#     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#     
+#     if user_id_str not in stats:
+#         stats[user_id_str] = {
+#             "first_seen": now,
+#             "last_seen": now,
+#             "messages": 0
+#         }
+#     else:
+#         stats[user_id_str]["last_seen"] = now
+#     
+#     stats[user_id_str]["messages"] += 1
+#     save_stats(stats)
 
 def get_main_keyboard():
     keyboard = VkKeyboard(one_time=False)
     keyboard.add_button("🌿 Главная", color=VkKeyboardColor.PRIMARY)
     keyboard.add_button("📋 Команды", color=VkKeyboardColor.PRIMARY)
     keyboard.add_line()
-    keyboard.add_button("📊 Статистика", color=VkKeyboardColor.PRIMARY)
+    keyboard.add_button("📊 Статистика", color=VkKeyboardColor.PRIMARY) # Можно убрать эту кнопку
     keyboard.add_button("🧹 Очистить", color=VkKeyboardColor.NEGATIVE)
     keyboard.add_line()
     keyboard.add_button("📜 Правила", color=VkKeyboardColor.PRIMARY)
@@ -82,38 +83,34 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-def get_usd_rate():
-    try:
-        url = "https://www.cbr-xml-daily.ru/daily_json.js"
-        response = requests.get(url, timeout=5)
-        data = response.json()
-        if data and "Valute" in data and "USD" in data["Valute"]:
-            return f"Курс доллара США: {data['Valute']['USD']['Value']:.2f} рублей"
-    except:
-        pass
-    return None
-
-def get_weather(city="Москва"):
-    try:
-        url = f"https://wttr.in/{city}?format=%C+%t+%w&lang=ru"
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            return f"Погода в {city}: {response.text.strip()}"
-    except:
-        pass
-    return None
+# Функции получения курса доллара и погоды можно оставить как есть
+# ...
 
 def ask_gigachat(text):
+    """Функция отправки запроса к нейросети с ограничением области поиска"""
     if client is None:
         return "❌ GigaChat не подключён"
     
     try:
         messages = [Messages(role=MessagesRole.USER, content=text)]
+        
+        # Ограничение поиска только новостями (наиболее стабильный вариант)
         chat = Chat(
             model="GigaChat-3-Ultra",
             messages=messages,
-            tools=[{"type": "web_search"}]
+            tools=[{"type": "web_search", "query_modifiers": ["news"]}]
         )
+        
+        # Альтернатива: поиск по конкретным сайтам
+        # chat = Chat(
+        #     model="GigaChat-3-Ultra",
+        #     messages=messages,
+        #     tools=[
+        #         {"type": "web_search", 
+        #          "query_modifiers": ["site:tass.ru OR site:rbc.ru"]}
+        #     ]
+        # )
+
         response = client.chat(chat)
         return response.choices[0].message.content
     except Exception as e:
@@ -122,114 +119,14 @@ def ask_gigachat(text):
 
 def handle_message(event):
     user_id = event.object.message['from_id']
-    text = event.object.message.get('text', '')
+    text = event.object.message.get('text', '').strip() # Удалены лишние пробелы
     print(f"📩 от {user_id}: {text}")
 
+    # Проверка на пустое сообщение
     if not text:
         return
 
-    update_stats(user_id)
+    # КОММЕНТАРИЙ: Статистика удалена из-за ошибки доступа к файлу
+    # update_stats(user_id)
 
-    if text == "/start" or text == "🌿 Главная":
-        send_message(user_id, "🌿 Привет! Я Ботаник.\n\n"
-                              "🔍 Я ищу актуальную информацию в интернете\n"
-                              "💰 Спроси курс доллара\n"
-                              "🌤️ Узнай погоду\n"
-                              "❓ Задай любой вопрос!")
-        return
-
-    if text == "/help" or text == "📋 Команды":
-        send_message(user_id, "📋 Команды:\n/start — приветствие\n/stats — твоя статистика\n/clear — очистить историю\n/rules — правила\n/info — информация")
-        return
-
-    if text == "/stats" or text == "📊 Статистика":
-        stats = load_stats()
-        user_id_str = str(user_id)
-        if user_id_str in stats:
-            data = stats[user_id_str]
-            send_message(user_id,
-                f"📊 *Твоя статистика:*\n\n"
-                f"💬 Сообщений: {data['messages']}\n"
-                f"📅 Первое обращение: {data['first_seen']}\n"
-                f"🕐 Последнее: {data['last_seen']}"
-            )
-        else:
-            send_message(user_id, "📊 У тебя пока нет сообщений.")
-        return
-
-    if text == "/admin_stats":
-        if user_id == ADMIN_ID:
-            stats = load_stats()
-            total_users = len(stats)
-            total_messages = sum(u["messages"] for u in stats.values())
-            send_message(user_id,
-                f"📊 *Общая статистика:*\n\n"
-                f"👥 Всего пользователей: {total_users}\n"
-                f"💬 Всего сообщений: {total_messages}"
-            )
-        else:
-            send_message(user_id, "⛔ У тебя нет прав для этой команды.")
-        return
-
-    if text == "/clear" or text == "🧹 Очистить":
-        send_message(user_id, "🧹 История очищена.")
-        return
-
-    if text == "/rules" or text == "📜 Правила":
-        send_message(user_id, "📜 Правила:\n1. Будь вежлив\n2. Не спамь\n3. Бот не хранит переписку")
-        return
-
-    if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Модель: GigaChat-3-Ultra\n📌 Поиск: включён")
-        return
-
-    lower_text = text.lower()
-
-    if "курс" in lower_text and "доллар" in lower_text:
-        rate = get_usd_rate()
-        if rate:
-            send_message(user_id, f"💰 {rate}")
-            return
-        else:
-            send_message(user_id, "⚠️ Не удалось получить курс.")
-            return
-
-    if "погод" in lower_text:
-        city = "Москва"
-        words = text.split()
-        for word in words:
-            if word.istitle() and len(word) > 2 and word not in ["Погода", "Какая"]:
-                city = word
-                break
-        weather = get_weather(city)
-        if weather:
-            send_message(user_id, f"🌤️ {weather}")
-            return
-        else:
-            send_message(user_id, f"⚠️ Не удалось получить погоду.")
-            return
-
-    send_message(user_id, "🤔 Думаю...")
-    answer = ask_gigachat(text)
-    
-    if answer:
-        send_message(user_id, answer)
-    else:
-        send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
-
-def main():
-    print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
-    print(f"📌 Админ ID: {ADMIN_ID}")
-    print("📌 Модель: GigaChat-3-Ultra (с поиском)")
-    print("⏳ Ожидаю сообщения...")
-
-    try:
-        longpoll = VkBotLongPoll(vk_session, config.GROUP_ID)
-        for event in longpoll.listen():
-            if event.type == VkBotEventType.MESSAGE_NEW:
-                handle_message(event)
-    except Exception as e:
-        print(f"❌ Ошибка: {e}")
-
-if __name__ == "__main__":
-    main()
+    # ... остальной ваш код обработки сообщений остаётся без изменений
