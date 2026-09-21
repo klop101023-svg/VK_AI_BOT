@@ -2,108 +2,79 @@ import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
-import config  # Ваш файл с токенами
-# Добавлена библиотека openai (pip install openai)
-import openai
+# Библиотека openai совместима с протоколом AITunnel
+import openai  # pip install openai
 
-# === ПОДКЛЮЧЕНИЕ К VK API ===
+# === ПОДКЛЮЧЕНИЕ К VK API (из файла config.py) ===
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
 print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
 print("⏳ Ожидаю сообщения...")
 
-# === ПОДКЛЮЧЕНИЕ К AITUNNEL ===
+# === ПОДКЛЮЧЕНИЕ К AITUNNEL / Нейросеть + Поиск ===
 try:
-    # Используйте ваш ключ из личного кабинета AITunnel
+    # Используйте ваш ключ из личного кабинета aitunnel.ru
     openai.api_key = config.AITUNNEL_API_KEY  
     # Важно: укажите endpoint платформы
     openai.api_base = "https://api.aitunnel.ru/v1"
 except Exception as e:
     print(f"❌ Ошибка подключения к AITunnel: {e}")
 
-ADMIN_ID = 1027228715  # Оставим админ‑ID для статистики
-
-def get_main_keyboard():
-    keyboard = VkKeyboard(one_time=False)
-    keyboard.add_button("🌿 Главная", color=VkKeyboardColor.PRIMARY)
-    keyboard.add_button("📋 Команды", color=VkApiKeyboardColor.PRIMARY)
-    keyboard.add_line()
-    keyboard.add_button("📊 Статистика", color=VkKeyboardColor.PRIMARY) 
-    keyboard.add_button("🧹 Очистить", color=VkKeyboardColor.NEGATIVE)
-    keyboard.add_line()
-    keyboard.add_button("📜 Правила", color=VkKeyboardColor.PRIMARY)
-    return keyboard.get_keyboard()
-
 def send_message(user_id, text, keyboard=None):
     try:
         vk.messages.send(
             user_id=user_id,
             message=text,
-            keyboard=keyboard if keyboard else get_main_keyboard(),
-            random_id=get_random_id()
+            keyboard=keyboard if keyboard else None,
+            random_id=get_random_id(),
         )
     except Exception as e:
         print(f"❌ Ошибка отправки сообщения: {e}")
 
-# Улучшенная функция общения с нейросетью через AITunnel
 def ask_aitunnel(text):
-    """Функция обработки ответа от AITunnel"""
+    """Функция общения с нейросетью через AITunnel"""
     try:
         response = openai.ChatCompletion.create(
-            model="gigachat-ultra",
-            messages=[
-                {"role": "user", "content": text}
-            ],
-            tools=[{"type": "web_browse"}]  # Включает интернет-поиск
+            model="gigachat-ultra",  # Или gigachat-2-ultra
+            messages=[{"role": "user", "content": text}],
+            tools=[
+                {"type": "web_browse"}
+            ],  # Включает интернет-поиск
+            tool_choice="auto",  # Платные аккаунты могут использовать авто-выбор инструментов
         )
         
-        # Проверка наличия content у сообщения
         answer = response.choices[0].message.get("content")
         if not isinstance(answer, str) or len(answer.strip()) == 0:
-            # Если ответ пустой или не строка — возвращаем дружелюбное сообщение
-            print(f"❌ Ответ пустой или не строка!")
             return "🤔 Кажется, я задумался слишком глубоко..."
     
-        return answer.strip()  # Возвращаем очищенный текст
+        return answer.strip()  # Возвращаем очищенный текст ответа
     
     except Exception as e:
-        # Выводим ошибку в логи и отправляем пользователю понятное сообщение
         print(f"❌ Ошибка AITunnel: {e}")
         return f"Ой! Что-то пошло не так: {str(e)}"
 
 def handle_message(event):
     user_id = event.object.message['from_id']
-    text = event.object.message.get('text', '').strip()  # Удалены лишние пробелы
-    print(f"📩 от {user_id}: {text}")
+    text = event.object.message.get('text', '').strip()
+    print(f"📩 от {user,}: {text}")
 
     # Проверка на пустое сообщение
     if not text:
         return
 
     # Обработка команд
-    if text in ["/start", "🌿 Главная"]:
-        send_message(user_id, "🌿 Привет! Я Ботаник.\n\n"
-                              "🔍 Я ищу актуальную информацию в интернете\n"
-                              "💰 Спроси курс доллара\n"
-                              "🌤️ Узнай погоду\n"
-                              "❓ Задай любой вопрос!")
+    if text in ["/start", "/help"]:
+        send_message(user_id, "🌿 Привет! Я — бот‑ботаник.\n\n"
+                              "🔍 Я ищу актуальную информацию в интернете,\n"
+                              "💰 Спроси курс доллара,\n"
+                              "🌤️ Узнай погоду,\n"
+                              "📜 Задай любой вопрос!")
         return
 
-    if text in ["/help", "📋 Команды"]:
-        send_message(user_id, "📋 Команды:\n/start — приветствие\n/stats — твоя статистика\n/clear — очистить историю\n/rules — правила\n/info — информация")
-        return
-
-    # Блоки с погодой и курсом доллара можно оставить без изменений
-    # ...
-    
     # Обычные вопросы -> Нейросеть
     send_message(user_id, "🤔 Думаю...")
     answer = ask_aitunnel(text)
-    
-    if answer:
-        send_message(user_id, answer)
-    else:
-        send_message(user_id, "⚠️ Попробуй задать вопрос иначе.")
+    send_message(user_id, answer)
 
 def main():
     longpoll = VkBotLongPoll(vk_session, config.GROUP_ID)
