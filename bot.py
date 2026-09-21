@@ -37,7 +37,7 @@ def send_message(user_id, text, keyboard=None):
             random_id=get_random_id(),
         )
     except Exception as e:
-        print(f"❌ Ошибка отправки сообщения: {e}")
+        print(f"❌ Ошибка отправки сообщения: {str(e)}")
 
 def ask_aitunnel(text):
     """Функция общения с нейросетью через AITunnel"""
@@ -58,12 +58,13 @@ def ask_aitunnel(text):
         )
         
         answer = response.choices[0].message.get("content")
-        if isinstance(answer, str) and len(answer.strip()) > 0:
-            return answer.strip()  # Возвращаем очищенный текст ответа
+        # ❗️ Возвращаем только валидный текстовый ответ
+        return answer.strip() if isinstance(answer, str) and len(answer.strip()) > 0 else None
     
     except Exception as e:
         print(f"❌ Ошибка AITunnel: {str(e)}")
-        return f"Ой! Что-то пошло не так: {str(e)}"
+        # Функция больше не отправляет ошибку пользователю — это делает основной цикл
+        return None
 
 def handle_message(event):
     user_id = event.object.message['from_id']
@@ -83,10 +84,11 @@ def handle_message(event):
     # Обычные вопросы -> Нейросеть
     send_message(user_id, "🤔 Думаю...")
     answer = ask_aitunnel(text)
-    # Убрана лишняя проверка ошибок в основном цикле
-    # Функция уже выводит ошибку внутри себя!
-    if answer is not None:       
-        send_message(user_user_id, answer)
+    
+    # ❗️ Новая проверка: проверяем именно наличие текста в ответе
+    # Если ответа нет (например, ошибка), пользователь просто увидит «Думаю...»
+    if answer:
+        send_message(user_id, answer)
 
 def main():
     longpoll = VkBotLongPoll(vk_session, int(os.getenv('GROUP_ID')))
