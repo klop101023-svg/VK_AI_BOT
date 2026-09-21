@@ -48,12 +48,15 @@ def ask_aitunnel(text):
         return "🤔 Кажется, я задумался слишком глубоко..."
 
     try:
+        # ❗️ Добавлен модификатор для принудительного поиска по сайту ЦБ РФ
         response = openai.ChatCompletion.create(
-            model="gigachat-2-pro",  # Исправленная модель
+            query_modifiers=["site:cbr.ru"],  # Подсказка для поиска
+            
+            model="gigachat-2-pro",
             messages=[
                 {"role": "user", "content": text}
             ],
-            tools=[{"type": "web_browse"}],  # Включает интернет-поиск
+            tools=[{"type": "web_browse"}],  # Включает поиск
             tool_choice="auto",                 # Платные аккаунты могут использовать авто-выбор инструментов
         )
         
