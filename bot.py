@@ -37,8 +37,8 @@ def send_message(user_id, text, keyboard=None):
 def ask_aitunnel(text):
     """Функция общения с нейросетью через AITunnel"""
     try:
-        response = openai.ChatCompletion.create(
-            model="gigachat-ultra",  # Или gigachat-2-ultra
+        response = openai.ChatCompletion.create(  # <--- Изменения здесь!
+            model="gigachat-2-pro",  # Исправленная модель
             messages=[
                 {"role": "user", "content": text}
             ],
@@ -58,7 +58,7 @@ def ask_aitunnel(text):
 
 def handle_message(event):
     user_id = event.object.message['from_id']
-    text = event.object.message.get('text', '').strip()  # Удалены лишние пробелы
+    text = event.object.message.get('text', '').strip()
     print(f"📩 от {user_id}: {text}")
 
     # Проверка на пустое сообщение
