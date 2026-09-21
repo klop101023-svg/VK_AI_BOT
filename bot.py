@@ -3,70 +3,32 @@ from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 import config
-# import requests # Не используется сейчас
-import json
-import os
-from datetime import datetime
-from gigachat import GigaChat
-from gigachat.models import Chat, Messages, MessagesRole
+# Добавлена библиотека openai (pip install openai)
+import openai
 
-# === ПОДКЛЮЧЕНИЕ К ВК ===
+# === ПОДКЛЮЧЕНИЕ К VK API ===
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
+print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
+print("⏳ Ожидаю сообщения...")
 
-# === ПОДКЛЮЧЕНИЕ К GIGACHAT ===
+# === ПОДКЛЮЧЕНИЕ К AITUNNEL ===
 try:
-    client = GigaChat(
-        base_url="https://api.giga.chat/v2",
-        credentials=config.GIGACHAT_CREDENTIALS,
-        scope=config.GIGACHAT_SCOPE,
-        verify_ssl_certs=False,
-    )
-    print("✅ GigaChat подключён")
+    # Используйте ваш ключ из личного кабинета AITunnel
+    openai.api_key = config.AITUNNEL_API_KEY  
+    # Важно: укажите endpoint платформы
+    openai.api_base = "https://api.aitunnel.ru/v1"
 except Exception as e:
-    print(f"❌ Ошибка GigaChat: {e}")
-    client = None
+    print(f"❌ Ошибка подключения к AITunnel: {e}")
 
-# СТАТИСТИКА УДАЛЕНА ИЛИ ЗАКОММЕНТИРОВАНА ДЛЯ РАБОТЫ НА ОБЛАЧНЫХ ПЛАТФОРМАХ
-# STATS_FILE = "/data/stats.json"
-# ADMIN_ID = 1027228715
-
-# def load_stats():
-#     if not os.path.exists(STATS_FILE):
-#         return {}
-#     try:
-#         with open(STATS_FILE, "r", encoding="utf-8") as f:
-#             return json.load(f)
-#     except:
-#         return {}
-#
-# def save_stats(stats):
-#     with open(STATS_FILE, "w", encoding="utf-8") as f:
-#         json.dump(stats, f, ensure_ascii=False, indent=2)
-#
-# def update_stats(user_id):
-#     stats = load_stats()
-#     user_id_str = str(user_id)
-#     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-#     
-#     if user_id_str not in stats:
-#         stats[user_id_str] = {
-#             "first_seen": now,
-#             "last_seen": now,
-#             "messages": 0
-#         }
-#     else:
-#         stats[user_id_str]["last_seen"] = now
-#     
-#     stats[user_id_str]["messages"] += 1
-#     save_stats(stats)
+ADMIN_ID = 1027228715  # Оставим админ‑ID для статистики
 
 def get_main_keyboard():
     keyboard = VkKeyboard(one_time=False)
     keyboard.add_button("🌿 Главная", color=VkKeyboardColor.PRIMARY)
     keyboard.add_button("📋 Команды", color=VkKeyboardColor.PRIMARY)
     keyboard.add_line()
-    keyboard.add_button("📊 Статистика", color=VkKeyboardColor.PRIMARY) # Можно убрать эту кнопку
+    keyboard.add_button("📊 Статистика", color=VkKeyboardColor.PRIMARY) 
     keyboard.add_button("🧹 Очистить", color=VkKeyboardColor.NEGATIVE)
     keyboard.add_line()
     keyboard.add_button("📜 Правила", color=VkKeyboardColor.PRIMARY)
@@ -81,52 +43,64 @@ def send_message(user_id, text, keyboard=None):
             random_id=get_random_id()
         )
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        print(f"❌ Ошибка отправки сообщения: {e}")
 
-# Функции получения курса доллара и погоды можно оставить как есть
-# ...
-
-def ask_gigachat(text):
-    """Функция отправки запроса к нейросети с ограничением области поиска"""
-    if client is None:
-        return "❌ GigaChat не подключён"
-    
+def ask_aitunnel(text):
+    """Функция общения с нейросетью через AITunnel"""
     try:
-        messages = [Messages(role=MessagesRole.USER, content=text)]
-        
-        # Ограничение поиска только новостями (наиболее стабильный вариант)
-        chat = Chat(
-            model="GigaChat-3-Ultra",
-            messages=messages,
-            tools=[{"type": "web_search", "query_modifiers": ["news"]}]
+        response = openai.ChatCompletion.create(
+            model="gigachat-ultra",
+            messages=[
+                {"role": "user", "content": text}
+            ],
+            tools=[{"type": "web_browse"}]  # Включает интернет-поиск
         )
         
-        # Альтернатива: поиск по конкретным сайтам
-        # chat = Chat(
-        #     model="GigaChat-3-Ultra",
-        #     messages=messages,
-        #     tools=[
-        #         {"type": "web_search", 
-        #          "query_modifiers": ["site:tass.ru OR site:rbc.ru"]}
-        #     ]
-        # )
-
-        response = client.chat(chat)
-        return response.choices[0].message.content
+        answer = response.choices[0].message.content.strip()
+        return answer
     except Exception as e:
-        print(f"❌ Ошибка GigaChat: {e}")
+        print(f"❌ Ошибка AITunnel: {e}")
         return None
 
 def handle_message(event):
     user_id = event.object.message['from_id']
-    text = event.object.message.get('text', '').strip() # Удалены лишние пробелы
+    text = event.object.message.get('text', '').strip()  # Удалены лишние пробелы
     print(f"📩 от {user_id}: {text}")
 
     # Проверка на пустое сообщение
     if not text:
         return
 
-    # КОММЕНТАРИЙ: Статистика удалена из-за ошибки доступа к файлу
-    # update_stats(user_id)
+    # Обработка команд
+    if text == "/start" or text == "🌿 Главная":
+        send_message(user_id, "🌿 Привет! Я Ботаник.\n\n"
+                              "🔍 Я ищу актуальную информацию в интернете\n"
+                              "💰 Спроси курс доллара\n"
+                              "🌤️ Узнай погоду\n"
+                              "❓ Задай любой вопрос!")
+        return
 
-    # ... остальной ваш код обработки сообщений остаётся без изменений
+    if text == "/help" or text == "📋 Команды":
+        send_message(user_id, "📋 Команды:\n/start — приветствие\n/stats — твоя статистика\n/clear — очистить историю\n/rules — правила\n/info — информация")
+        return
+
+    # Блоки с погодой и курсом доллара можно оставить без изменений
+    # ...
+    
+    # Обычные вопросы -> Нейросеть
+    send_message(user_id, "🤔 Думаю...")
+    answer = ask_aitunnel(text)
+    
+    if answer:
+        send_message(user_id, answer)
+    else:
+        send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
+
+def main():
+    longpoll = VkBotLongPoll(vk_session, config.GROUP_ID)
+    for event in longpoll.listen():
+        if event.type == VkBotEventType.MESSAGE_NEW:
+            handle_message(event)
+
+if __name__ == "__main__":
+    main()
