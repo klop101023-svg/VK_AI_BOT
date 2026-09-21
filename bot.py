@@ -1,7 +1,6 @@
 import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
-from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 # Библиотека openai совместима с протоколом AITunnel
 import openai  # pip install openai
 import os  # Для работы с переменными окружения
@@ -13,6 +12,16 @@ vk_session = vk_api.VkApi(token=os.getenv("VK_TOKEN"))
 vk = vk_session.get_api()
 print(f"✅ Бот запущен. Группа ID: {os.getenv('GROUP_ID')}")
 print("⏳ Ожидаю сообщения...")
+
+# === НАСТРОЙКИ ПОИСКА ===
+# ❗️ Измени это значение, если хочешь ограничить область поиска!
+SEARCH_MODIFIER = "news"
+# Возможные варианты:
+# - news — любые новости
+# - site:tass.ru — только сайт ТАСС
+# - site:cbr.ru — только ЦБ РФ
+# - "" (пустая строка) — без ограничений
+
 
 # === ПОДКЛЮЧЕНИЕ К AITUNNEL / Нейросеть + Поиск ===
 try:
@@ -28,12 +37,11 @@ try:
 except Exception as e:
     print(f"❌ Ошибка при подключении к AITunnel: {e}")
 
-def send_message(user_id, text, keyboard=None):
+def send_message(user_id, text):
     try:
         vk.messages.send(
             user_id=user_id,
             message=text,
-            keyboard=keyboard if keyboard else None,
             random_id=get_random_id(),
         )
     except Exception as e:
@@ -41,6 +49,9 @@ def send_message(user_id, text, keyboard=None):
 
 def ask_aitunnel(text):
     """Функция общения с нейросетью через AITunnel"""
+    # ❗️ Подсказка для поиска: добавляем модификатор области прямо в запрос!
+    query_text = f"{text} [{SEARCH_MODIFIER}]"
+
     # ❗️ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА ДО ЗАПРОСА!
     # Это решает проблему ошибок на простых вопросах без поиска
     api_key = os.getenv("OPENAI_API_KEY") 
@@ -48,13 +59,10 @@ def ask_aitunnel(text):
         return "🤔 Кажется, я задумался слишком глубоко..."
 
     try:
-        # ❗️ Добавлен модификатор для принудительного поиска по сайту ЦБ РФ
         response = openai.ChatCompletion.create(
-            query_modifiers=["site:cbr.ru"],  # Подсказка для поиска
-            
             model="gigachat-2-pro",
             messages=[
-                {"role": "user", "content": text}
+                {"role": "user", "content": query_text}
             ],
             tools=[{"type": "web_browse"}],  # Включает поиск
             tool_choice="auto",                 # Платные аккаунты могут использовать авто-выбор инструментов
