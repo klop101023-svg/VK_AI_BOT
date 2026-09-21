@@ -2,7 +2,7 @@ import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
-import config
+import config  # Ваш файл с токенами
 # Добавлена библиотека openai (pip install openai)
 import openai
 
@@ -26,7 +26,7 @@ ADMIN_ID = 1027228715  # Оставим админ‑ID для статисти�
 def get_main_keyboard():
     keyboard = VkKeyboard(one_time=False)
     keyboard.add_button("🌿 Главная", color=VkKeyboardColor.PRIMARY)
-    keyboard.add_button("📋 Команды", color=VkKeyboardColor.PRIMARY)
+    keyboard.add_button("📋 Команды", color=VkApiKeyboardColor.PRIMARY)
     keyboard.add_line()
     keyboard.add_button("📊 Статистика", color=VkKeyboardColor.PRIMARY) 
     keyboard.add_button("🧹 Очистить", color=VkKeyboardColor.NEGATIVE)
@@ -45,8 +45,9 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка отправки сообщения: {e}")
 
+# Улучшенная функция общения с нейросетью через AITunnel
 def ask_aitunnel(text):
-    """Функция общения с нейросетью через AITunnel"""
+    """Функция обработки ответа от AITunnel"""
     try:
         response = openai.ChatCompletion.create(
             model="gigachat-ultra",
@@ -56,11 +57,19 @@ def ask_aitunnel(text):
             tools=[{"type": "web_browse"}]  # Включает интернет-поиск
         )
         
-        answer = response.choices[0].message.content.strip()
-        return answer
+        # Проверка наличия content у сообщения
+        answer = response.choices[0].message.get("content")
+        if not isinstance(answer, str) or len(answer.strip()) == 0:
+            # Если ответ пустой или не строка — возвращаем дружелюбное сообщение
+            print(f"❌ Ответ пустой или не строка!")
+            return "🤔 Кажется, я задумался слишком глубоко..."
+    
+        return answer.strip()  # Возвращаем очищенный текст
+    
     except Exception as e:
+        # Выводим ошибку в логи и отправляем пользователю понятное сообщение
         print(f"❌ Ошибка AITunnel: {e}")
-        return None
+        return f"Ой! Что-то пошло не так: {str(e)}"
 
 def handle_message(event):
     user_id = event.object.message['from_id']
@@ -72,7 +81,7 @@ def handle_message(event):
         return
 
     # Обработка команд
-    if text == "/start" or text == "🌿 Главная":
+    if text in ["/start", "🌿 Главная"]:
         send_message(user_id, "🌿 Привет! Я Ботаник.\n\n"
                               "🔍 Я ищу актуальную информацию в интернете\n"
                               "💰 Спроси курс доллара\n"
@@ -80,7 +89,7 @@ def handle_message(event):
                               "❓ Задай любой вопрос!")
         return
 
-    if text == "/help" or text == "📋 Команды":
+    if text in ["/help", "📋 Команды"]:
         send_message(user_id, "📋 Команды:\n/start — приветствие\n/stats — твоя статистика\n/clear — очистить историю\n/rules — правила\n/info — информация")
         return
 
@@ -94,7 +103,7 @@ def handle_message(event):
     if answer:
         send_message(user_id, answer)
     else:
-        send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
+        send_message(user_id, "⚠️ Попробуй задать вопрос иначе.")
 
 def main():
     longpoll = VkBotLongPoll(vk_session, config.GROUP_ID)
