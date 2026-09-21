@@ -4,17 +4,20 @@ from vk_api.utils import get_random_id
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 # Библиотека openai совместима с протоколом AITunnel
 import openai  # pip install openai
+import os  # Для работы с переменными окружения
 
-# === ПОДКЛЮЧЕНИЕ К VK API (из файла config.py) ===
-vk_session = vk_api.VkApi(token=config.VK_TOKEN)
+ADMIN_ID = 1027228715  # Оставим админ‑ID (можно убрать)
+
+# === ПОДКЛЮЧЕНИЕ К VK API через переменные окружения ===
+vk_session = vk_api.VkApi(token=os.getenv("VK_TOKEN"))
 vk = vk_session.get_api()
-print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
+print(f"✅ Бот запущен. Группа ID: {os.getenv('GROUP_ID')}")
 print("⏳ Ожидаю сообщения...")
 
 # === ПОДКЛЮЧЕНИЕ К AITUNNEL / Нейросеть + Поиск ===
 try:
     # Используйте ваш ключ из личного кабинета aitunnel.ru
-    openai.api_key = config.AITUNNEL_API_KEY  
+    openai.api_key = os.getenv("AITUNNEL_API_KEY")  
     # Важно: укажите endpoint платформы
     openai.api_base = "https://api.aitunnel.ru/v1"
 except Exception as e:
@@ -36,10 +39,10 @@ def ask_aitunnel(text):
     try:
         response = openai.ChatCompletion.create(
             model="gigachat-ultra",  # Или gigachat-2-ultra
-            messages=[{"role": "user", "content": text}],
-            tools=[
-                {"type": "web_browse"}
-            ],  # Включает интернет-поиск
+            messages=[
+                {"role": "user", "content": text}
+            ],
+            tools=[{"type": "web_browse"}],  # Включает интернет-поиск
             tool_choice="auto",  # Платные аккаунты могут использовать авто-выбор инструментов
         )
         
@@ -55,8 +58,8 @@ def ask_aitunnel(text):
 
 def handle_message(event):
     user_id = event.object.message['from_id']
-    text = event.object.message.get('text', '').strip()
-    print(f"📩 от {user,}: {text}")
+    text = event.object.message.get('text', '').strip()  # Удалены лишние пробелы
+    print(f"📩 от {user_id}: {text}")
 
     # Проверка на пустое сообщение
     if not text:
@@ -77,7 +80,7 @@ def handle_message(event):
     send_message(user_id, answer)
 
 def main():
-    longpoll = VkBotLongPoll(vk_session, config.GROUP_ID)
+    longpoll = VkBotLongPoll(vk_session, int(os.getenv('GROUP_ID')))
     for event in longpoll.listen():
         if event.type == VkBotEventType.MESSAGE_NEW:
             handle_message(event)
