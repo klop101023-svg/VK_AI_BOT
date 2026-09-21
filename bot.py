@@ -16,12 +16,18 @@ print("⏳ Ожидаю сообщения...")
 
 # === ПОДКЛЮЧЕНИЕ К AITUNNEL / Нейросеть + Поиск ===
 try:
-    # Используйте ваш ключ из личного кабинета aitunnel.ru
-    openai.api_key = os.getenv("AITUNNEL_API_KEY")  
-    # Важно: укажите endpoint платформы
+    # Проверка наличия ключа напрямую из окружения
+    api_key = os.getenv("OPENAI_API_KEY")
+    
+    if not api_key or len(api_key) < 40:
+        print(f"❌ Ошибка: Ключ AITunnel не найден или неверен!")
+        raise ValueError("API Key is missing or invalid!")
+    
+    # Указываем endpoint платформы вручную
     openai.api_base = "https://api.aitunnel.ru/v1"
+    openai.api_key = api_key
 except Exception as e:
-    print(f"❌ Ошибка подключения к AITunnel: {e}")
+    print(f"❌ Ошибка при подключении к AITunnel: {e}")
 
 def send_message(user_id, text, keyboard=None):
     try:
@@ -37,7 +43,7 @@ def send_message(user_id, text, keyboard=None):
 def ask_aitunnel(text):
     """Функция общения с нейросетью через AITunnel"""
     try:
-        response = openai.ChatCompletion.create(  # <--- Изменения здесь!
+        response = openai.ChatCompletion.create(
             model="gigachat-2-pro",  # Исправленная модель
             messages=[
                 {"role": "user", "content": text}
@@ -53,7 +59,8 @@ def ask_aitunnel(text):
         return answer.strip()  # Возвращаем очищенный текст ответа
     
     except Exception as e:
-        print(f"❌ Ошибка AITunnel: {e}")
+        # Функция сама отправляет ошибку пользователю!
+        print(f"❌ Ошибка AITunnel: {str(e)}")
         return f"Ой! Что-то пошло не так: {str(e)}"
 
 def handle_message(event):
@@ -68,16 +75,15 @@ def handle_message(event):
     # Обработка команд
     if text in ["/start", "/help"]:
         send_message(user_id, "🌿 Привет! Я — бот‑ботаник.\n\n"
-                              "🔍 Я ищу актуальную информацию в интернете,\n"
-                              "💰 Спроси курс доллара,\n"
-                              "🌤️ Узнай погоду,\n"
-                              "📜 Задай любой вопрос!")
+                              "🔍 Задай любой вопрос!")
         return
 
     # Обычные вопросы -> Нейросеть
     send_message(user_id, "🤔 Думаю...")
-    answer = ask_aitunnel(text)
-    send_message(user_id, answer)
+    answer = ask_aitunnel(text)  
+    # Убрана лишняя проверка ошибок, функция уже выводит их внутри себя!
+    if answer is not None:       
+        send_message(user_id, answer)
 
 def main():
     longpoll = VkBotLongPoll(vk_session, int(os.getenv('GROUP_ID')))
