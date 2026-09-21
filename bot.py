@@ -1,7 +1,7 @@
 import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
-# Библиотека openai совместима с протоколом AITunnel
+# Библиотека openai совместима с протоколом DeepSeek AI / 6ot.ai
 import openai  # pip install openai
 import os  # Для работы с переменными окружения
 
@@ -13,19 +13,14 @@ vk = vk_session.get_api()
 print(f"✅ Бот запущен. Группа ID: {os.getenv('GROUP_ID')}")
 print("⏳ Ожидаю сообщения...")
 
-# === ПОДКЛЮЧЕНИЕ К AITUNNEL / Нейросеть + Поиск ===
+# === ПОДКЛЮЧЕНИЕ К DEEPSEEK AI / 6ot.ai ===
 try:
-    # Проверка наличия ключа напрямую из окружения
-    api_key = os.getenv("OPENAI_API_KEY")
-    
-    if not api_key or len(api_key) < 40:
-        print(f"❌ Ошибка: Ключ AITunnel не найден или неверен!")
-        raise ValueError("API Key is missing or invalid!")
-    
-    # Указываем endpoint платформы вручную
-    openai.api_base = "https://api.aitunnel.ru/v1"
+    # Используйте ваш ключ из личного кабинета deepseek.ai
+    openai.api_key = os.getenv("DEEPSEEK_API_KEY")  
+    # Важно: укажите endpoint платформы
+    openai.api_base = "https://api.deepseek.com/v1"
 except Exception as e:
-    print(f"❌ Ошибка при подключении к AITunnel: {e}")
+    print(f"❌ Ошибка при подключении к DeepSeek AI: {e}")
 
 def send_message(user_id, text):
     try:
@@ -38,19 +33,19 @@ def send_message(user_id, text):
         print(f"❌ Ошибка отправки сообщения: {str(e)}")
 
 def ask_aitunnel(text):
-    """Функция общения с нейросетью через AITunnel"""
+    """Функция общения с нейросетью через DeepSeek AI"""
+    
     # ❗️ Подсказка для поиска: добавляем явное указание инструмента!
     query_text = f"{text} [tool=web_browse]"
 
     # ❗️ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА ДО ЗАПРОСА!
-    # Это решает проблему ошибок на простых вопросах без поиска
-    api_key = os.getenv("OPENAI_API_KEY") 
+    api_key = os.getenv("DEEPSEEK_API_KEY") 
     if not api_key or len(api_key) < 40:
         return "🤔 Кажется, я задумался слишком глубоко..."
 
     try:
         response = openai.ChatCompletion.create(
-            model="gigachat-2-pro",
+            model="gigachat-v4-pro",
             messages=[
                 {"role": "user", "content": query_text}
             ],
@@ -59,7 +54,7 @@ def ask_aitunnel(text):
         )
         
         answer = response.choices[0].message.get("content")
-        # ❗️ Возвращаем только валидный текстовый ответ
+        # ❗️ Возвращаем только валидный текстовый ответ или None
         return answer.strip() if isinstance(answer, str) and len(answer.strip()) > 0 else None
     
     except Exception as e:
@@ -86,10 +81,9 @@ def handle_message(event):
     send_message(user_id, "🤔 Думаю...")
     answer = ask_aitunnel(text)
     
-    # ❗️ Новая проверка: проверяем именно наличие текста в ответе
-    # Если ответа нет (например, ошибка), пользователь просто увидит «Думаю...»
-    if answer:
-        send_message(user_id, answer)
+    # ❗️ Новая проверка: теперь всегда отправляем ответ
+    # Если у модели нет ответа, пользователь увидит ваше сообщение-заполнитель
+    send_message(user_id, answer or "🤔 Кажется, я задумался слишком глубоко...") 
 
 def main():
     longpoll = VkBotLongPoll(vk_session, int(os.getenv('GROUP_ID')))
