@@ -1,5 +1,5 @@
 vk_api
 python-dotenv
 requests
-gigachat
 openai
+flask
