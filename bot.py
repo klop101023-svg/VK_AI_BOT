@@ -21,7 +21,8 @@ client = openai.OpenAI(
     base_url=config.OPENAI_BASE_URL,
 )
 
-STATS_FILE = "/data/stats.json"
+# === ФАЙЛ СТАТИСТИКИ (в папке с ботом) ===
+STATS_FILE = os.path.join(os.path.dirname(__file__), "stats.json")
 ADMIN_ID = 1027228715
 
 # === МИНИ-СЕРВЕР ДЛЯ BOTHOST ===
@@ -35,7 +36,7 @@ def run_flask():
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
-# === ОСТАЛЬНОЙ КОД ===
+# === СТАТИСТИКА ===
 def load_stats():
     if not os.path.exists(STATS_FILE):
         return {}
@@ -46,8 +47,11 @@ def load_stats():
         return {}
 
 def save_stats(stats):
-    with open(STATS_FILE, "w", encoding="utf-8") as f:
-        json.dump(stats, f, ensure_ascii=False, indent=2)
+    try:
+        with open(STATS_FILE, "w", encoding="utf-8") as f:
+            json.dump(stats, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"❌ Ошибка сохранения статистики: {e}")
 
 def update_stats(user_id):
     stats = load_stats()
@@ -66,6 +70,7 @@ def update_stats(user_id):
     stats[user_id_str]["messages"] += 1
     save_stats(stats)
 
+# === КЛАВИАТУРА ===
 def get_main_keyboard():
     keyboard = VkKeyboard(one_time=False)
     keyboard.add_button("🌿 Главная", color=VkKeyboardColor.PRIMARY)
@@ -88,6 +93,7 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
+# === КУРС И ПОГОДА ===
 def get_usd_rate():
     try:
         url = "https://www.cbr-xml-daily.ru/daily_json.js"
@@ -109,6 +115,7 @@ def get_weather(city="Москва"):
         pass
     return None
 
+# === ОБРАБОТЧИК СООБЩЕНИЙ ===
 def handle_message(event):
     user_id = event.object.message['from_id']
     text = event.object.message.get('text', '')
@@ -119,6 +126,7 @@ def handle_message(event):
 
     update_stats(user_id)
 
+    # === КОМАНДЫ ===
     if text == "/start" or text == "🌿 Главная":
         send_message(user_id, "🌿 Привет! Я Ботаник.\n\n"
                               "💰 Спроси курс доллара\n"
@@ -173,6 +181,7 @@ def handle_message(event):
 
     lower_text = text.lower()
 
+    # === КУРС ДОЛЛАРА ===
     if "курс" in lower_text and "доллар" in lower_text:
         rate = get_usd_rate()
         if rate:
@@ -182,6 +191,7 @@ def handle_message(event):
             send_message(user_id, "⚠️ Не удалось получить курс.")
             return
 
+    # === ПОГОДА ===
     if "погод" in lower_text:
         city = "Москва"
         words = text.split()
@@ -197,6 +207,7 @@ def handle_message(event):
             send_message(user_id, f"⚠️ Не удалось получить погоду.")
             return
 
+    # === AI-ОТВЕТ ===
     try:
         response = client.chat.completions.create(
             model=config.OPENAI_MODEL,
@@ -206,9 +217,10 @@ def handle_message(event):
         )
         send_message(user_id, response.choices[0].message.content)
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        print(f"❌ Ошибка AI: {e}")
         send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
 
+# === ЗАПУСК ===
 def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
     print(f"📌 Админ ID: {ADMIN_ID}")
@@ -222,7 +234,6 @@ def main():
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
-# === ЗАПУСК ===
 if __name__ == "__main__":
     # Запускаем Flask в отдельном потоке
     flask_thread = threading.Thread(target=run_flask)
