@@ -22,7 +22,7 @@ client = openai.OpenAI(
 )
 
 # === ФАЙЛ СТАТИСТИКИ (в папке с ботом) ===
-STATS_FILE = os.path.join(os.path.dirname(__file__), "stats.json")
+STATS_FILE = "stats.json"
 ADMIN_ID = 1027228715
 
 # === МИНИ-СЕРВЕР ДЛЯ BOTHOST ===
@@ -90,8 +90,9 @@ def send_message(user_id, text, keyboard=None):
             keyboard=keyboard if keyboard else get_main_keyboard(),
             random_id=get_random_id()
         )
+        print(f"✅ Отправлено: {text[:50]}")
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        print(f"❌ Ошибка отправки: {e}")
 
 # === КУРС И ПОГОДА ===
 def get_usd_rate():
@@ -124,7 +125,11 @@ def handle_message(event):
     if not text:
         return
 
-    update_stats(user_id)
+    # Сначала отвечаем, потом считаем статистику
+    try:
+        update_stats(user_id)
+    except Exception as e:
+        print(f"❌ Ошибка статистики: {e}")
 
     # === КОМАНДЫ ===
     if text == "/start" or text == "🌿 Главная":
@@ -209,16 +214,19 @@ def handle_message(event):
 
     # === AI-ОТВЕТ ===
     try:
+        print("🤔 Отправляю запрос в AITUNNEL...")
         response = client.chat.completions.create(
             model=config.OPENAI_MODEL,
             messages=[{"role": "user", "content": text}],
             temperature=0.7,
             max_tokens=500,
         )
-        send_message(user_id, response.choices[0].message.content)
+        answer = response.choices[0].message.content
+        print(f"✅ Ответ получен: {answer[:50]}")
+        send_message(user_id, answer)
     except Exception as e:
         print(f"❌ Ошибка AI: {e}")
-        send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
+        send_message(user_id, f"⚠️ Ошибка AI: {e}")
 
 # === ЗАПУСК ===
 def main():
@@ -239,7 +247,7 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-    print("✅ Flask запущен на порту 8080")
+    print("✅ Flask запущен")
     
     # Запускаем бота
     main()
