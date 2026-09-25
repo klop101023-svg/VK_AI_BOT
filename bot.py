@@ -10,6 +10,7 @@ from datetime import datetime
 import openai
 from flask import Flask
 import threading
+from ddgs import DDGS  # <-- Импортируем библиотеку для поиска
 
 # === ПОДКЛЮЧЕНИЕ К ВК ===
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
@@ -94,6 +95,33 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка отправки: {e}")
 
+# === ПОИСК В ИНТЕРНЕТЕ (DuckDuckGo) ===
+def search_duckduckgo(query):
+    """Ищет информацию в интернете и возвращает текст для контекста."""
+    try:
+        print(f"🔍 Ищу в DuckDuckGo: {query}")
+        # region='ru-ru' заставляет искать в русскоязычном сегменте
+        results = DDGS().text(query, region='ru-ru', max_results=3)
+        
+        if not results:
+            print("🔍 Результатов не найдено.")
+            return None
+        
+        # Собираем все найденные заголовки и описания в один текст
+        context = ""
+        for r in results:
+            title = r.get('title', '')
+            body = r.get('body', '')
+            if title or body:
+                context += f"【{title}】{body}\n"
+        
+        print(f"✅ Найдено {len(results)} результатов.")
+        return context if context else None
+
+    except Exception as e:
+        print(f"❌ Ошибка поиска DuckDuckGo: {e}")
+        return None
+
 # === КУРС И ПОГОДА ===
 def get_usd_rate():
     try:
@@ -125,7 +153,6 @@ def handle_message(event):
     if not text:
         return
 
-    # Сначала отвечаем, потом считаем статистику
     try:
         update_stats(user_id)
     except Exception as e:
@@ -181,7 +208,7 @@ def handle_message(event):
         return
 
     if text == "/info" or text == "ℹ️ Инфо":
-        send_message(user_id, f"🤖 Ботаник\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн")
+        send_message(user_id, f"🤖 Ботаник\n📌 Модель: {config.OPENAI_MODEL}\n📌 Поиск: DuckDuckGo")
         return
 
     lower_text = text.lower()
@@ -212,18 +239,39 @@ def handle_message(event):
             send_message(user_id, f"⚠️ Не удалось получить погоду.")
             return
 
-    # === AI-ОТВЕТ ===
+    # === ГИБРИДНЫЙ ОТВЕТ (ПОИСК + AI) ===
     try:
-        print("🤔 Отправляю запрос в AITUNNEL...")
-        response = client.chat.completions.create(
-            model=config.OPENAI_MODEL,
-            messages=[{"role": "user", "content": text}],
-            temperature=0.7,
-            max_tokens=500,
-        )
-        answer = response.choices[0].message.content
-        print(f"✅ Ответ получен: {answer[:50]}")
-        send_message(user_id, answer)
+        # 1. Пробуем найти информацию в интернете
+        search_context = search_duckduckgo(text)
+        
+        if search_context:
+            # 2. Если нашли — формируем запрос к AI с найденным контекстом
+            print("🤔 Формирую ответ на основе найденного...")
+            response = client.chat.completions.create(
+                model=config.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "Ты — полезный ассистент. Используй только предоставленную информацию, чтобы ответить на вопрос пользователя. Если информации недостаточно, скажи об этом."},
+                    {"role": "user", "content": f"Вот результаты поиска:\n{search_context}\n\nВопрос пользователя: {text}\n\nОтветь на вопрос, используя эту информацию."}
+                ],
+                temperature=0.7,
+                max_tokens=500,
+            )
+            answer = response.choices[0].message.content
+            print(f"✅ Ответ сформирован: {answer[:50]}")
+            send_message(user_id, answer)
+        else:
+            # 3. Если не нашли — отвечаем как обычно (из знаний AI)
+            print("🤔 Информации в интернете нет, отвечаю через AI...")
+            response = client.chat.completions.create(
+                model=config.OPENAI_MODEL,
+                messages=[{"role": "user", "content": text}],
+                temperature=0.7,
+                max_tokens=500,
+            )
+            answer = response.choices[0].message.content
+            print(f"✅ Ответ (без поиска): {answer[:50]}")
+            send_message(user_id, answer)
+            
     except Exception as e:
         print(f"❌ Ошибка AI: {e}")
         send_message(user_id, f"⚠️ Ошибка AI: {e}")
