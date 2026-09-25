@@ -10,7 +10,7 @@ from datetime import datetime
 import openai
 from flask import Flask
 import threading
-from ddgs import DDGS  # <-- Импортируем библиотеку для поиска
+from ddgs import DDGS
 
 # === ПОДКЛЮЧЕНИЕ К ВК ===
 vk_session = vk_api.VkApi(token=config.VK_TOKEN)
@@ -22,7 +22,6 @@ client = openai.OpenAI(
     base_url=config.OPENAI_BASE_URL,
 )
 
-# === ФАЙЛ СТАТИСТИКИ (в папке с ботом) ===
 STATS_FILE = "stats.json"
 ADMIN_ID = 1027228715
 
@@ -100,20 +99,25 @@ def search_duckduckgo(query):
     """Ищет информацию в интернете и возвращает текст для контекста."""
     try:
         print(f"🔍 Ищу в DuckDuckGo: {query}")
-        # region='ru-ru' заставляет искать в русскоязычном сегменте
-        results = DDGS().text(query, region='ru-ru', max_results=3)
+        results = DDGS().text(
+            query,
+            region='ru-ru',
+            max_results=5,
+            timelimit='m',
+            backend='auto'
+        )
         
         if not results:
             print("🔍 Результатов не найдено.")
             return None
         
-        # Собираем все найденные заголовки и описания в один текст
         context = ""
         for r in results:
             title = r.get('title', '')
             body = r.get('body', '')
+            href = r.get('href', '')
             if title or body:
-                context += f"【{title}】{body}\n"
+                context += f"【{title}】{body}\nИсточник: {href}\n\n"
         
         print(f"✅ Найдено {len(results)} результатов.")
         return context if context else None
@@ -163,7 +167,7 @@ def handle_message(event):
         send_message(user_id, "🌿 Привет! Я Ботаник.\n\n"
                               "💰 Спроси курс доллара\n"
                               "🌤️ Узнай погоду\n"
-                              "💬 Или просто поговори со мной")
+                              "🔍 Или задай любой вопрос — я поищу в интернете")
         return
 
     if text == "/help" or text == "📋 Команды":
@@ -241,30 +245,31 @@ def handle_message(event):
 
     # === ГИБРИДНЫЙ ОТВЕТ (ПОИСК + AI) ===
     try:
-        # 1. Пробуем найти информацию в интернете
+        now = datetime.now().strftime("%d.%m.%Y %H:%M")
         search_context = search_duckduckgo(text)
         
         if search_context:
-            # 2. Если нашли — формируем запрос к AI с найденным контекстом
             print("🤔 Формирую ответ на основе найденного...")
             response = client.chat.completions.create(
                 model=config.OPENAI_MODEL,
                 messages=[
-                    {"role": "system", "content": "Ты — полезный ассистент. Используй только предоставленную информацию, чтобы ответить на вопрос пользователя. Если информации недостаточно, скажи об этом."},
+                    {"role": "system", "content": f"Сегодня {now}. Ты — полезный ассистент. Используй ТОЛЬКО предоставленную информацию, чтобы ответить на вопрос пользователя. Если в информации нет прямого ответа, честно скажи: 'В найденных источниках нет точной информации'."},
                     {"role": "user", "content": f"Вот результаты поиска:\n{search_context}\n\nВопрос пользователя: {text}\n\nОтветь на вопрос, используя эту информацию."}
                 ],
-                temperature=0.7,
+                temperature=0.3,
                 max_tokens=500,
             )
             answer = response.choices[0].message.content
             print(f"✅ Ответ сформирован: {answer[:50]}")
             send_message(user_id, answer)
         else:
-            # 3. Если не нашли — отвечаем как обычно (из знаний AI)
             print("🤔 Информации в интернете нет, отвечаю через AI...")
             response = client.chat.completions.create(
                 model=config.OPENAI_MODEL,
-                messages=[{"role": "user", "content": text}],
+                messages=[
+                    {"role": "system", "content": f"Сегодня {now}."},
+                    {"role": "user", "content": text}
+                ],
                 temperature=0.7,
                 max_tokens=500,
             )
@@ -291,11 +296,9 @@ def main():
         print(f"❌ Ошибка: {e}")
 
 if __name__ == "__main__":
-    # Запускаем Flask в отдельном потоке
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
     print("✅ Flask запущен")
     
-    # Запускаем бота
     main()
