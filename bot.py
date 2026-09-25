@@ -1,95 +1,234 @@
 import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
-# Библиотека openai совместима с протоколом DeepSeek AI / 6ot.ai
-import openai  # pip install openai
-import os  # Для работы с переменными окружения
+from vk_api.keyboard import VkKeyboard, VkKeyboardColor
+import config
+import requests
+import json
+import os
+from datetime import datetime
+import openai
+from flask import Flask
+import threading
 
-ADMIN_ID = 1027228715  # Оставим админ‑ID (можно убрать)
-
-# === ПОДКЛЮЧЕНИЕ К VK API через переменные окружения ===
-vk_session = vk_api.VkApi(token=os.getenv("VK_TOKEN"))
+# === ПОДКЛЮЧЕНИЕ К ВК ===
+vk_session = vk_api.VkApi(token=config.VK_TOKEN)
 vk = vk_session.get_api()
-print(f"✅ Бот запущен. Группа ID: {os.getenv('GROUP_ID')}")
-print("⏳ Ожидаю сообщения...")
 
-# === ПОДКЛЮЧЕНИЕ К DEEPSEEK AI / 6ot.ai ===
-try:
-    # Используйте ваш ключ из личного кабинета deepseek.ai
-    openai.api_key = os.getenv("DEEPSEEK_API_KEY")  
-    # Важно: укажите endpoint платформы
-    openai.api_base = "https://api.deepseek.com/v1"
-except Exception as e:
-    print(f"❌ Ошибка при подключении к DeepSeek AI: {e}")
+# === ПОДКЛЮЧЕНИЕ К AITUNNEL ===
+client = openai.OpenAI(
+    api_key=config.OPENAI_API_KEY,
+    base_url=config.OPENAI_BASE_URL,
+)
 
-def send_message(user_id, text):
+STATS_FILE = "/data/stats.json"
+ADMIN_ID = 1027228715
+
+# === МИНИ-СЕРВЕР ДЛЯ BOTHOST ===
+app = Flask(__name__)
+
+@app.route('/')
+def health():
+    return "Bot is running"
+
+def run_flask():
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# === ОСТАЛЬНОЙ КОД ===
+def load_stats():
+    if not os.path.exists(STATS_FILE):
+        return {}
+    try:
+        with open(STATS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_stats(stats):
+    with open(STATS_FILE, "w", encoding="utf-8") as f:
+        json.dump(stats, f, ensure_ascii=False, indent=2)
+
+def update_stats(user_id):
+    stats = load_stats()
+    user_id_str = str(user_id)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    if user_id_str not in stats:
+        stats[user_id_str] = {
+            "first_seen": now,
+            "last_seen": now,
+            "messages": 0
+        }
+    else:
+        stats[user_id_str]["last_seen"] = now
+    
+    stats[user_id_str]["messages"] += 1
+    save_stats(stats)
+
+def get_main_keyboard():
+    keyboard = VkKeyboard(one_time=False)
+    keyboard.add_button("🌿 Главная", color=VkKeyboardColor.PRIMARY)
+    keyboard.add_button("📋 Команды", color=VkKeyboardColor.PRIMARY)
+    keyboard.add_line()
+    keyboard.add_button("📊 Статистика", color=VkKeyboardColor.PRIMARY)
+    keyboard.add_button("🧹 Очистить", color=VkKeyboardColor.NEGATIVE)
+    keyboard.add_line()
+    keyboard.add_button("📜 Правила", color=VkKeyboardColor.PRIMARY)
+    return keyboard.get_keyboard()
+
+def send_message(user_id, text, keyboard=None):
     try:
         vk.messages.send(
             user_id=user_id,
             message=text,
-            random_id=get_random_id(),
+            keyboard=keyboard if keyboard else get_main_keyboard(),
+            random_id=get_random_id()
         )
     except Exception as e:
-        print(f"❌ Ошибка отправки сообщения: {str(e)}")
+        print(f"❌ Ошибка: {e}")
 
-def ask_aitunnel(text):
-    """Функция общения с нейросетью через DeepSeek AI"""
-    
-    # ❗️ Подсказка для поиска: добавляем явное указание инструмента!
-    query_text = f"{text} [tool=web_browse]"
-
-    # ❗️ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА ДО ЗАПРОСА!
-    api_key = os.getenv("DEEPSEEK_API_KEY") 
-    if not api_key or len(api_key) < 40:
-        return "🤔 Кажется, я задумался слишком глубоко..."
-
+def get_usd_rate():
     try:
-        response = openai.ChatCompletion.create(
-            model="gigachat-v4-pro",
-            messages=[
-                {"role": "user", "content": query_text}
-            ],
-            tools=[{"type": "web_browse"}],  # Включает поиск
-            tool_choice="auto",                 # Платные аккаунты могут использовать авто-выбор инструментов
-        )
-        
-        answer = response.choices[0].message.get("content")
-        # ❗️ Возвращаем только валидный текстовый ответ или None
-        return answer.strip() if isinstance(answer, str) and len(answer.strip()) > 0 else None
-    
-    except Exception as e:
-        print(f"❌ Ошибка AITunnel: {str(e)}")
-        # Функция больше не отправляет ошибку пользователю — это делает основной цикл
-        return None
+        url = "https://www.cbr-xml-daily.ru/daily_json.js"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        if data and "Valute" in data and "USD" in data["Valute"]:
+            return f"Курс доллара США: {data['Valute']['USD']['Value']:.2f} рублей"
+    except:
+        pass
+    return None
+
+def get_weather(city="Москва"):
+    try:
+        url = f"https://wttr.in/{city}?format=%C+%t+%w&lang=ru"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            return f"Погода в {city}: {response.text.strip()}"
+    except:
+        pass
+    return None
 
 def handle_message(event):
     user_id = event.object.message['from_id']
-    text = event.object.message.get('text', '').strip()
+    text = event.object.message.get('text', '')
     print(f"📩 от {user_id}: {text}")
 
-    # Проверка на пустое сообщение
     if not text:
         return
 
-    # Обработка команд
-    if text in ["/start", "/help"]:
-        send_message(user_id, "🌿 Привет! Я — бот‑ботаник.\n\n"
-                              "🔍 Задай любой вопрос!")
+    update_stats(user_id)
+
+    if text == "/start" or text == "🌿 Главная":
+        send_message(user_id, "🌿 Привет! Я Ботаник.\n\n"
+                              "💰 Спроси курс доллара\n"
+                              "🌤️ Узнай погоду\n"
+                              "💬 Или просто поговори со мной")
         return
 
-    # Обычные вопросы -> Нейросеть
-    send_message(user_id, "🤔 Думаю...")
-    answer = ask_aitunnel(text)
-    
-    # ❗️ Новая проверка: теперь всегда отправляем ответ
-    # Если у модели нет ответа, пользователь увидит ваше сообщение-заполнитель
-    send_message(user_id, answer or "🤔 Кажется, я задумался слишком глубоко...") 
+    if text == "/help" or text == "📋 Команды":
+        send_message(user_id, "📋 Команды:\n/start — приветствие\n/stats — твоя статистика\n/clear — очистить историю\n/rules — правила\n/info — информация")
+        return
+
+    if text == "/stats" or text == "📊 Статистика":
+        stats = load_stats()
+        user_id_str = str(user_id)
+        if user_id_str in stats:
+            data = stats[user_id_str]
+            send_message(user_id,
+                f"📊 *Твоя статистика:*\n\n"
+                f"💬 Сообщений: {data['messages']}\n"
+                f"📅 Первое обращение: {data['first_seen']}\n"
+                f"🕐 Последнее: {data['last_seen']}"
+            )
+        else:
+            send_message(user_id, "📊 У тебя пока нет сообщений.")
+        return
+
+    if text == "/admin_stats":
+        if user_id == ADMIN_ID:
+            stats = load_stats()
+            total_users = len(stats)
+            total_messages = sum(u["messages"] for u in stats.values())
+            send_message(user_id,
+                f"📊 *Общая статистика:*\n\n"
+                f"👥 Всего пользователей: {total_users}\n"
+                f"💬 Всего сообщений: {total_messages}"
+            )
+        else:
+            send_message(user_id, "⛔ У тебя нет прав для этой команды.")
+        return
+
+    if text == "/clear" or text == "🧹 Очистить":
+        send_message(user_id, "🧹 История очищена.")
+        return
+
+    if text == "/rules" or text == "📜 Правила":
+        send_message(user_id, "📜 Правила:\n1. Будь вежлив\n2. Не спамь\n3. Бот не хранит переписку")
+        return
+
+    if text == "/info" or text == "ℹ️ Инфо":
+        send_message(user_id, f"🤖 Ботаник\n📌 Модель: {config.OPENAI_MODEL}\n📌 Статус: онлайн")
+        return
+
+    lower_text = text.lower()
+
+    if "курс" in lower_text and "доллар" in lower_text:
+        rate = get_usd_rate()
+        if rate:
+            send_message(user_id, f"💰 {rate}")
+            return
+        else:
+            send_message(user_id, "⚠️ Не удалось получить курс.")
+            return
+
+    if "погод" in lower_text:
+        city = "Москва"
+        words = text.split()
+        for word in words:
+            if word.istitle() and len(word) > 2 and word not in ["Погода", "Какая"]:
+                city = word
+                break
+        weather = get_weather(city)
+        if weather:
+            send_message(user_id, f"🌤️ {weather}")
+            return
+        else:
+            send_message(user_id, f"⚠️ Не удалось получить погоду.")
+            return
+
+    try:
+        response = client.chat.completions.create(
+            model=config.OPENAI_MODEL,
+            messages=[{"role": "user", "content": text}],
+            temperature=0.7,
+            max_tokens=500,
+        )
+        send_message(user_id, response.choices[0].message.content)
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
+        send_message(user_id, "⚠️ Ошибка. Попробуй позже.")
 
 def main():
-    longpoll = VkBotLongPoll(vk_session, int(os.getenv('GROUP_ID')))
-    for event in longpoll.listen():
-        if event.type == VkBotEventType.MESSAGE_NEW:
-            handle_message(event)
+    print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
+    print(f"📌 Админ ID: {ADMIN_ID}")
+    print("⏳ Ожидаю сообщения...")
 
+    try:
+        longpoll = VkBotLongPoll(vk_session, config.GROUP_ID)
+        for event in longpoll.listen():
+            if event.type == VkBotEventType.MESSAGE_NEW:
+                handle_message(event)
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
+
+# === ЗАПУСК ===
 if __name__ == "__main__":
+    # Запускаем Flask в отдельном потоке
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    print("✅ Flask запущен на порту 8080")
+    
+    # Запускаем бота
     main()
