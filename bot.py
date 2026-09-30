@@ -95,6 +95,28 @@ def send_message(user_id, text, keyboard=None):
     except Exception as e:
         print(f"❌ Ошибка отправки: {e}")
 
+# === УВЕДОМЛЕНИЯ АДМИНУ ===
+LAST_NOTIFY = {}
+
+def notify_admin(error_text, error_type="general"):
+    """Отправляет уведомление админу, но не чаще 1 раза в 5 минут на тип ошибки."""
+    now = time.time()
+    last = LAST_NOTIFY.get(error_type, 0)
+    if now - last < 300:
+        print(f"⏸️ Уведомление ({error_type}) пропущено — недавно отправляли")
+        return
+    LAST_NOTIFY[error_type] = now
+    
+    try:
+        vk.messages.send(
+            user_id=ADMIN_ID,
+            message=f"⚠️ Ошибка бота ({error_type}):\n{error_text}",
+            random_id=get_random_id()
+        )
+        print(f"📨 Уведомление админу отправлено: {error_type}")
+    except Exception as e:
+        print(f"❌ Не удалось уведомить админа: {e}")
+
 # === ПОИСК В ИНТЕРНЕТЕ (DuckDuckGo) ===
 def search_duckduckgo(query):
     """Ищет информацию в интернете и возвращает текст для контекста."""
@@ -279,7 +301,9 @@ def handle_message(event):
             send_message(user_id, answer)
             
     except Exception as e:
-        print(f"❌ Ошибка AI: {e}")
+        error_msg = f"Ошибка AI: {e}"
+        print(f"❌ {error_msg}")
+        notify_admin(error_msg, "ai")
         send_message(user_id, f"⚠️ Ошибка AI: {e}")
 
 # === ЗАПУСК ===
@@ -296,7 +320,9 @@ def main():
                 if event.type == VkBotEventType.MESSAGE_NEW:
                     handle_message(event)
         except Exception as e:
-            print(f"❌ LongPoll упал: {e}")
+            error_msg = f"LongPoll упал: {e}"
+            print(f"❌ {error_msg}")
+            notify_admin(error_msg, "longpoll")
             print("⏳ Переподключение через 5 секунд...")
             time.sleep(5)
             continue
