@@ -6,6 +6,7 @@ import config
 import requests
 import json
 import os
+import time
 from datetime import datetime
 import openai
 from flask import Flask
@@ -287,13 +288,18 @@ def main():
     print(f"📌 Админ ID: {ADMIN_ID}")
     print("⏳ Ожидаю сообщения...")
 
-    try:
-        longpoll = VkBotLongPoll(vk_session, config.GROUP_ID)
-        for event in longpoll.listen():
-            if event.type == VkBotEventType.MESSAGE_NEW:
-                handle_message(event)
-    except Exception as e:
-        print(f"❌ Ошибка: {e}")
+    while True:
+        try:
+            longpoll = VkBotLongPoll(vk_session, config.GROUP_ID)
+            print("🔄 LongPoll подключён")
+            for event in longpoll.listen():
+                if event.type == VkBotEventType.MESSAGE_NEW:
+                    handle_message(event)
+        except Exception as e:
+            print(f"❌ LongPoll упал: {e}")
+            print("⏳ Переподключение через 5 секунд...")
+            time.sleep(5)
+            continue
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
