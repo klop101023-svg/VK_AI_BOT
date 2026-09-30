@@ -96,13 +96,13 @@ def send_message(user_id, text, keyboard=None):
         print(f"❌ Ошибка отправки: {e}")
 
 # === УВЕДОМЛЕНИЯ АДМИНУ ===
-LAST_NOTIFY = {}
+LAST_NOTIFY = {}  # {error_type: timestamp}
 
 def notify_admin(error_text, error_type="general"):
     """Отправляет уведомление админу, но не чаще 1 раза в 5 минут на тип ошибки."""
     now = time.time()
     last = LAST_NOTIFY.get(error_type, 0)
-    if now - last < 300:
+    if now - last < 300:  # 5 минут
         print(f"⏸️ Уведомление ({error_type}) пропущено — недавно отправляли")
         return
     LAST_NOTIFY[error_type] = now
