@@ -7,7 +7,7 @@ import requests
 import json
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import openai
 from flask import Flask
 import threading
@@ -23,8 +23,83 @@ client = openai.OpenAI(
     base_url=config.OPENAI_BASE_URL,
 )
 
-STATS_FILE = "stats.json"
+# === ПУТИ К ФАЙЛАМ (постоянная папка BotHost) ===
+DATA_DIR = os.environ.get("DATA_DIR", ".")
+STATS_FILE = os.path.join(DATA_DIR, "stats.json")
+HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
+
 ADMIN_ID = 1027228715
+
+# === ПАМЯТЬ ДИАЛОГОВ ===
+DIALOG_HISTORY = {}
+MAX_HISTORY = 10
+HISTORY_TTL_HOURS = 24
+
+def load_history():
+    global DIALOG_HISTORY
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                DIALOG_HISTORY = json.load(f)
+            print(f"✅ История загружена: {len(DIALOG_HISTORY)} пользователей")
+        except Exception as e:
+            print(f"❌ Ошибка загрузки истории: {e}")
+            DIALOG_HISTORY = {}
+
+def save_history():
+    try:
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(DIALOG_HISTORY, f, ensure_ascii=False)
+    except Exception as e:
+        print(f"❌ Ошибка сохранения истории: {e}")
+
+def cleanup_old_history():
+    now = datetime.now()
+    to_delete = []
+    for uid, data in DIALOG_HISTORY.items():
+        try:
+            last = datetime.strptime(data["last_active"], "%Y-%m-%d %H:%M:%S")
+            if (now - last) > timedelta(hours=HISTORY_TTL_HOURS):
+                to_delete.append(uid)
+        except:
+            to_delete.append(uid)
+    for uid in to_delete:
+        del DIALOG_HISTORY[uid]
+    if to_delete:
+        save_history()
+        print(f"🧹 Очищено старых историй: {len(to_delete)}")
+
+def get_history(user_id):
+    uid = str(user_id)
+    data = DIALOG_HISTORY.get(uid)
+    if not data:
+        return []
+    try:
+        last = datetime.strptime(data["last_active"], "%Y-%m-%d %H:%M:%S")
+        if (datetime.now() - last) > timedelta(hours=HISTORY_TTL_HOURS):
+            del DIALOG_HISTORY[uid]
+            save_history()
+            return []
+    except:
+        return []
+    return data.get("messages", [])
+
+def add_to_history(user_id, role, content):
+    uid = str(user_id)
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if uid not in DIALOG_HISTORY:
+        DIALOG_HISTORY[uid] = {"messages": [], "last_active": now_str}
+    DIALOG_HISTORY[uid]["messages"].append({"role": role, "content": content})
+    DIALOG_HISTORY[uid]["last_active"] = now_str
+    if len(DIALOG_HISTORY[uid]["messages"]) > MAX_HISTORY * 2:
+        DIALOG_HISTORY[uid]["messages"] = DIALOG_HISTORY[uid]["messages"][-MAX_HISTORY * 2:]
+    save_history()
+
+def clear_history(user_id):
+    uid = str(user_id)
+    if uid in DIALOG_HISTORY:
+        del DIALOG_HISTORY[uid]
+        save_history()
 
 # === МИНИ-СЕРВЕР ДЛЯ BOTHOST ===
 app = Flask(__name__)
@@ -58,16 +133,10 @@ def update_stats(user_id):
     stats = load_stats()
     user_id_str = str(user_id)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
     if user_id_str not in stats:
-        stats[user_id_str] = {
-            "first_seen": now,
-            "last_seen": now,
-            "messages": 0
-        }
+        stats[user_id_str] = {"first_seen": now, "last_seen": now, "messages": 0}
     else:
         stats[user_id_str]["last_seen"] = now
-    
     stats[user_id_str]["messages"] += 1
     save_stats(stats)
 
@@ -83,30 +152,38 @@ def get_main_keyboard():
     keyboard.add_button("📜 Правила", color=VkKeyboardColor.PRIMARY)
     return keyboard.get_keyboard()
 
-def send_message(user_id, text, keyboard=None):
-    try:
-        vk.messages.send(
-            user_id=user_id,
-            message=text,
-            keyboard=keyboard if keyboard else get_main_keyboard(),
-            random_id=get_random_id()
-        )
-        print(f"✅ Отправлено: {text[:50]}")
-    except Exception as e:
-        print(f"❌ Ошибка отправки: {e}")
+def send_message(user_id, text, keyboard=None, retries=2):
+    """Отправляет сообщение с 2 повторными попытками."""
+    for attempt in range(retries + 1):
+        try:
+            vk.messages.send(
+                user_id=user_id,
+                message=text,
+                keyboard=keyboard if keyboard else get_main_keyboard(),
+                random_id=get_random_id()
+            )
+            print(f"✅ Отправлено: {text[:50]}")
+            return True
+        except Exception as e:
+            if attempt < retries:
+                print(f"⚠️ Попытка {attempt + 1}/{retries + 1} не удалась: {e}")
+                time.sleep(1)
+            else:
+                error_msg = f"Не удалось отправить после {retries + 1} попыток: {e}"
+                print(f"❌ {error_msg}")
+                notify_admin(error_msg, "send")
+                return False
 
 # === УВЕДОМЛЕНИЯ АДМИНУ ===
-LAST_NOTIFY = {}  # {error_type: timestamp}
+LAST_NOTIFY = {}
 
 def notify_admin(error_text, error_type="general"):
-    """Отправляет уведомление админу, но не чаще 1 раза в 5 минут на тип ошибки."""
     now = time.time()
     last = LAST_NOTIFY.get(error_type, 0)
-    if now - last < 300:  # 5 минут
-        print(f"⏸️ Уведомление ({error_type}) пропущено — недавно отправляли")
+    if now - last < 300:
+        print(f"⏸️ Уведомление ({error_type}) пропущено")
         return
     LAST_NOTIFY[error_type] = now
-    
     try:
         vk.messages.send(
             user_id=ADMIN_ID,
@@ -117,23 +194,14 @@ def notify_admin(error_text, error_type="general"):
     except Exception as e:
         print(f"❌ Не удалось уведомить админа: {e}")
 
-# === ПОИСК В ИНТЕРНЕТЕ (DuckDuckGo) ===
+# === ПОИСК ===
 def search_duckduckgo(query):
-    """Ищет информацию в интернете и возвращает текст для контекста."""
     try:
         print(f"🔍 Ищу в DuckDuckGo: {query}")
-        results = DDGS().text(
-            query,
-            region='ru-ru',
-            max_results=5,
-            timelimit='m',
-            backend='auto'
-        )
-        
+        results = DDGS().text(query, region='ru-ru', max_results=5, timelimit='m', backend='auto')
         if not results:
             print("🔍 Результатов не найдено.")
             return None
-        
         context = ""
         for r in results:
             title = r.get('title', '')
@@ -141,10 +209,8 @@ def search_duckduckgo(query):
             href = r.get('href', '')
             if title or body:
                 context += f"【{title}】{body}\nИсточник: {href}\n\n"
-        
         print(f"✅ Найдено {len(results)} результатов.")
         return context if context else None
-
     except Exception as e:
         print(f"❌ Ошибка поиска DuckDuckGo: {e}")
         return None
@@ -152,8 +218,7 @@ def search_duckduckgo(query):
 # === КУРС И ПОГОДА ===
 def get_usd_rate():
     try:
-        url = "https://www.cbr-xml-daily.ru/daily_json.js"
-        response = requests.get(url, timeout=5)
+        response = requests.get("https://www.cbr-xml-daily.ru/daily_json.js", timeout=5)
         data = response.json()
         if data and "Valute" in data and "USD" in data["Valute"]:
             return f"Курс доллара США: {data['Valute']['USD']['Value']:.2f} рублей"
@@ -163,8 +228,7 @@ def get_usd_rate():
 
 def get_weather(city="Москва"):
     try:
-        url = f"https://wttr.in/{city}?format=%C+%t+%w&lang=ru"
-        response = requests.get(url, timeout=5)
+        response = requests.get(f"https://wttr.in/{city}?format=%C+%t+%w&lang=ru", timeout=5)
         if response.status_code == 200:
             return f"Погода в {city}: {response.text.strip()}"
     except:
@@ -227,7 +291,8 @@ def handle_message(event):
         return
 
     if text == "/clear" or text == "🧹 Очистить":
-        send_message(user_id, "🧹 История очищена.")
+        clear_history(user_id)
+        send_message(user_id, "🧹 История диалога очищена. Начинаем с чистого листа!")
         return
 
     if text == "/rules" or text == "📜 Правила":
@@ -266,39 +331,50 @@ def handle_message(event):
             send_message(user_id, f"⚠️ Не удалось получить погоду.")
             return
 
-    # === ГИБРИДНЫЙ ОТВЕТ (ПОИСК + AI) ===
+    # === ГИБРИДНЫЙ ОТВЕТ (ПОИСК + AI + ПАМЯТЬ) ===
     try:
         now = datetime.now().strftime("%d.%m.%Y %H:%M")
-        search_context = search_duckduckgo(text)
+        
+        search_triggers = ["что такое", "кто такой", "кто такая", "когда", "где ",
+                          "новости", "сколько", "как работает", "почему",
+                          "расскажи про", "найди", "погугли", "какой", "какая", "какие"]
+        need_search = any(trigger in lower_text for trigger in search_triggers)
+        
+        search_context = None
+        if need_search:
+            search_context = search_duckduckgo(text)
+        
+        system_prompt = (
+            f"Сегодня {now}. Ты — Ботаник, полезный AI-ассистент. "
+            f"Отвечай на русском, кратко и по делу. Помни контекст диалога."
+        )
+        
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(get_history(user_id))
         
         if search_context:
-            print("🤔 Формирую ответ на основе найденного...")
-            response = client.chat.completions.create(
-                model=config.OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": f"Сегодня {now}. Ты — полезный ассистент. Используй ТОЛЬКО предоставленную информацию, чтобы ответить на вопрос пользователя. Если в информации нет прямого ответа, честно скажи: 'В найденных источниках нет точной информации'."},
-                    {"role": "user", "content": f"Вот результаты поиска:\n{search_context}\n\nВопрос пользователя: {text}\n\nОтветь на вопрос, используя эту информацию."}
-                ],
-                temperature=0.3,
-                max_tokens=500,
-            )
-            answer = response.choices[0].message.content
-            print(f"✅ Ответ сформирован: {answer[:50]}")
-            send_message(user_id, answer)
+            messages.append({
+                "role": "user",
+                "content": f"Информация из интернета:\n{search_context}\n\nВопрос: {text}\n\nОтветь, используя эту информацию."
+            })
+            print("🤔 Формирую ответ с поиском...")
         else:
-            print("🤔 Информации в интернете нет, отвечаю через AI...")
-            response = client.chat.completions.create(
-                model=config.OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": f"Сегодня {now}."},
-                    {"role": "user", "content": text}
-                ],
-                temperature=0.7,
-                max_tokens=500,
-            )
-            answer = response.choices[0].message.content
-            print(f"✅ Ответ (без поиска): {answer[:50]}")
-            send_message(user_id, answer)
+            messages.append({"role": "user", "content": text})
+            print("🤔 Формирую ответ без поиска (диалог)...")
+        
+        response = client.chat.completions.create(
+            model=config.OPENAI_MODEL,
+            messages=messages,
+            temperature=0.5,
+            max_tokens=500,
+        )
+        answer = response.choices[0].message.content
+        print(f"✅ Ответ: {answer[:50]}")
+        
+        add_to_history(user_id, "user", text)
+        add_to_history(user_id, "assistant", answer)
+        
+        send_message(user_id, answer)
             
     except Exception as e:
         error_msg = f"Ошибка AI: {e}"
@@ -311,6 +387,9 @@ def main():
     print(f"✅ Бот запущен. Группа ID: {config.GROUP_ID}")
     print(f"📌 Админ ID: {ADMIN_ID}")
     print("⏳ Ожидаю сообщения...")
+
+    load_history()
+    cleanup_old_history()
 
     while True:
         try:
